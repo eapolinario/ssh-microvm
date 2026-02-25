@@ -1,8 +1,0 @@
-#!/bin/bash
-set -euo pipefail
-
-echo "Running build check before commit..."
-if ! just build; then
-    echo "ERROR: 'just build' failed. Commit aborted." >&2
-    exit 1
-fi

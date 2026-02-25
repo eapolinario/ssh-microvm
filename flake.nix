@@ -18,6 +18,7 @@
             pkgs.gopls
             pkgs.gotools
             pkgs.just
+            pkgs.pre-commit
             pkgs.direnv
             pkgs.nix-direnv
           ];
@@ -25,7 +26,7 @@
           # Ensure nix-direnv's use_flake hook is available
           shellHook = ''
             source ${pkgs.nix-direnv}/share/nix-direnv/direnvrc
-            just setup-hooks
+            pre-commit install
           '';
         };
       }
