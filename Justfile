@@ -54,6 +54,9 @@ fetch-ubuntu:
     sudo rm -rf "$squash_dir"
     ln -sf "ubuntu-${ubuntu_version}.ext4" artifacts/ubuntu.ext4
 
+setup-hooks:
+    git config core.hooksPath .githooks
+
 fmt:
     gofmt -w cmd internal
 
