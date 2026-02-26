@@ -21,6 +21,7 @@
             pkgs.pre-commit
             pkgs.direnv
             pkgs.nix-direnv
+            pkgs.squashfsTools
           ];
 
           # Ensure nix-direnv's use_flake hook is available
