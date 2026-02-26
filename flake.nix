@@ -22,6 +22,7 @@
             pkgs.direnv
             pkgs.nix-direnv
             pkgs.squashfsTools
+            pkgs.dolt
           ];
 
           # Ensure nix-direnv's use_flake hook is available
