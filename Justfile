@@ -4,6 +4,8 @@ set shell := ["bash", "-lc"]
 
 KERNEL := "artifacts/vmlinux.bin"
 ROOTFS := "artifacts/ubuntu.ext4"
+TAP_NAME := "tap0"
+HOST_IP := "172.16.0.1"
 
 default:
     @just --list
@@ -20,7 +22,7 @@ run-args KERNEL ROOTFS:
 fetch-ubuntu:
     #!/usr/bin/env bash
     set -euxo pipefail
-    for cmd in curl unsquashfs ssh-keygen mkfs.ext4 sudo; do
+    for cmd in curl squashfuse fusermount ssh-keygen mkfs.ext4 sudo; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             echo "missing dependency: $cmd" >&2
             exit 1
@@ -38,8 +40,12 @@ fetch-ubuntu:
     ubuntu_version="${ubuntu_base#ubuntu-}"
     ubuntu_version="${ubuntu_version%.squashfs}"
     curl -fsSL -o "artifacts/ubuntu-${ubuntu_version}.squashfs.upstream" "https://s3.amazonaws.com/spec.ccfc.min/${latest_ubuntu_key}"
+    squash_mount="$(mktemp -d /tmp/ssh-microvm-squashfs-mount-XXXXXXXX)"
     squash_dir="$(mktemp -d /tmp/ssh-microvm-squashfs-XXXXXXXX)"
-    unsquashfs -d "$squash_dir" "artifacts/ubuntu-${ubuntu_version}.squashfs.upstream"
+    squashfuse "artifacts/ubuntu-${ubuntu_version}.squashfs.upstream" "$squash_mount"
+    cp -a "$squash_mount/." "$squash_dir/"
+    fusermount -u "$squash_mount"
+    rmdir "$squash_mount"
     key_path="artifacts/ubuntu-${ubuntu_version}.id_rsa"
     if [ ! -f "$key_path" ]; then
         ssh-keygen -f "$key_path" -N ""
@@ -68,3 +74,59 @@ tidy:
 
 test:
     CGO_ENABLED=0 go test ./...
+
+integration:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{justfile_directory()}}"
+    kernel="${root}/{{KERNEL}}"
+    rootfs="${root}/{{ROOTFS}}"
+    guest_key="${root}/artifacts/ubuntu.id_rsa"
+    if [[ ! -f "$kernel" || ! -f "$rootfs" || ! -f "$guest_key" ]]; then
+        echo "missing artifacts; run: just fetch-ubuntu" >&2
+        exit 1
+    fi
+    CGO_ENABLED=0 \
+        SSH_MICROVM_KERNEL="$kernel" \
+        SSH_MICROVM_ROOTFS="$rootfs" \
+        SSH_MICROVM_GUEST_KEY="$guest_key" \
+        go test ./internal/integration -v
+
+integration-sudoers:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    user="${SUDO_USER:-${USER:-$LOGNAME}}"
+    cat <<'EOF'
+    Add the following to your sudoers (via `sudo visudo`), updating USER if needed:
+    EOF
+    cat <<EOF
+    ${user} ALL=(root) NOPASSWD: /usr/sbin/ip, /sbin/ip, /usr/bin/ip
+    EOF
+
+tap-up:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tap="{{TAP_NAME}}"
+    host_ip="{{HOST_IP}}"
+    if ip link show "$tap" >/dev/null 2>&1; then
+        echo "tap exists: $tap"
+    else
+        sudo ip tuntap add dev "$tap" mode tap
+    fi
+    if ! ip addr show dev "$tap" | grep -q "${host_ip}/24"; then
+        sudo ip addr add "${host_ip}/24" dev "$tap"
+    fi
+    sudo ip link set "$tap" up
+
+tap-down:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    tap="{{TAP_NAME}}"
+    if ip link show "$tap" >/dev/null 2>&1; then
+        sudo ip link del "$tap"
+    else
+        echo "tap missing: $tap"
+    fi
+
+ssh-local:
+    ssh -t -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -i artifacts/ubuntu.id_rsa localhost -p 2222
