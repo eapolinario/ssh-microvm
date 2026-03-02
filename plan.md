@@ -19,3 +19,4 @@
 
 - [ ] Wire SSH session to guest — SSH I/O wiring to the microVM (vsock/serial console or forwarded port) so interactive shells run inside the guest
 - [ ] Add Debian rootfs support — document and automate building a Debian rootfs ext4 image; update config to support rootfs selection
+- [ ] Snapshot-backed instant provisioning — after first successful VM boot with sshd ready, pause and serialize a Firecracker snapshot (memory + disk); restore from snapshot for each new SSH connection instead of cold-booting; mount a per-session writable ext4 overlay atop the shared base disk for write isolation; maintain a configurable warm pool of pre-restored VMs; target <200ms from SSH accept to interactive shell
