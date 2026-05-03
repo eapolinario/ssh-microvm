@@ -162,6 +162,11 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			args:    requiredArgs("--guest-ip", "2001:db8::2"),
 			wantErr: "--guest-ip must be a valid IPv4 address: 2001:db8::2",
 		},
+		{
+			name:    "same guest and host ip",
+			args:    requiredArgs("--guest-ip", "172.16.0.2", "--host-ip", "172.16.0.2"),
+			wantErr: "--guest-ip and --host-ip must be different",
+		},
 	}
 
 	for _, tt := range tests {

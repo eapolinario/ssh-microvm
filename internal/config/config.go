@@ -114,6 +114,9 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if !isIPv4(cfg.HostIP) {
 		return nil, fmt.Errorf("--host-ip must be a valid IPv4 address: %s", cfg.HostIP)
 	}
+	if cfg.GuestIP == cfg.HostIP {
+		return nil, errors.New("--guest-ip and --host-ip must be different")
+	}
 
 	return cfg, nil
 }
