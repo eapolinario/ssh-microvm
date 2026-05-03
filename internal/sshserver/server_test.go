@@ -1129,6 +1129,27 @@ func TestWaitForPortRejectsInvalidState(t *testing.T) {
 			wantErr: "guest port address must be set",
 		},
 		{
+			name:    "address with surrounding whitespace",
+			addr:    " 127.0.0.1:22 ",
+			timeout: time.Second,
+			dial:    validDial,
+			wantErr: "guest port address must not contain surrounding whitespace",
+		},
+		{
+			name:    "malformed address",
+			addr:    "127.0.0.1",
+			timeout: time.Second,
+			dial:    validDial,
+			wantErr: "guest port address must be a valid TCP address",
+		},
+		{
+			name:    "invalid port",
+			addr:    "127.0.0.1:not-a-port",
+			timeout: time.Second,
+			dial:    validDial,
+			wantErr: "guest port address port must be valid",
+		},
+		{
 			name:    "zero timeout",
 			addr:    "127.0.0.1:22",
 			timeout: 0,

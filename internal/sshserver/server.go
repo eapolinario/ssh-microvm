@@ -690,6 +690,16 @@ func waitForPortWithDial(addr string, timeout time.Duration, dial func(string, t
 	if strings.TrimSpace(addr) == "" {
 		return errors.New("guest port address must be set")
 	}
+	if addr != strings.TrimSpace(addr) {
+		return errors.New("guest port address must not contain surrounding whitespace")
+	}
+	if _, port, err := net.SplitHostPort(addr); err != nil {
+		return fmt.Errorf("guest port address must be a valid TCP address: %s", addr)
+	} else if port == "" {
+		return errors.New("guest port address port must be set")
+	} else if _, err := net.LookupPort("tcp", port); err != nil {
+		return fmt.Errorf("guest port address port must be valid: %s", port)
+	}
 	if timeout <= 0 {
 		return errors.New("guest port timeout must be positive")
 	}
