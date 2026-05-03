@@ -494,4 +494,30 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 19,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_vms_ended_at_insert_valid
+BEFORE INSERT ON vms
+WHEN NEW.ended_at IS NOT NULL
+AND (
+	trim(NEW.ended_at, char(9, 10, 11, 12, 13, 32)) = ''
+	OR NEW.ended_at != trim(NEW.ended_at, char(9, 10, 11, 12, 13, 32))
+)
+BEGIN
+	SELECT RAISE(ABORT, 'VM end time must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_ended_at_update_valid
+BEFORE UPDATE OF ended_at ON vms
+WHEN NEW.ended_at IS NOT NULL
+AND (
+	trim(NEW.ended_at, char(9, 10, 11, 12, 13, 32)) = ''
+	OR NEW.ended_at != trim(NEW.ended_at, char(9, 10, 11, 12, 13, 32))
+)
+BEGIN
+	SELECT RAISE(ABORT, 'VM end time must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
