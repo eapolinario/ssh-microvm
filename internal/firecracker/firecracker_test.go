@@ -40,6 +40,14 @@ func TestStopWithoutProcessDoesNotPanic(t *testing.T) {
 	}
 }
 
+func TestStopRejectsNilContext(t *testing.T) {
+	vm := &VM{}
+
+	if err := vm.Stop(nil, time.Second); err == nil || !strings.Contains(err.Error(), "context must be set") {
+		t.Fatalf("Stop error = %v, want context validation error", err)
+	}
+}
+
 func TestStopTreatsGracefulSIGTERMAsSuccess(t *testing.T) {
 	logFile, err := os.Create(filepath.Join(t.TempDir(), "firecracker.log"))
 	if err != nil {
@@ -105,9 +113,10 @@ func TestStopReapsProcessAfterGracefulTimeoutKill(t *testing.T) {
 
 func TestManagerStartRejectsNilDependencies(t *testing.T) {
 	tests := []struct {
-		name    string
-		manager *Manager
-		wantErr string
+		name      string
+		manager   *Manager
+		useNilCtx bool
+		wantErr   string
 	}{
 		{
 			name:    "nil manager",
@@ -119,11 +128,21 @@ func TestManagerStartRejectsNilDependencies(t *testing.T) {
 			manager: NewManager(nil),
 			wantErr: "config must be set",
 		},
+		{
+			name:      "nil context",
+			manager:   NewManager(&config.Config{}),
+			useNilCtx: true,
+			wantErr:   "context must be set",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			vm, err := tt.manager.Start(context.Background())
+			ctx := context.Background()
+			if tt.useNilCtx {
+				ctx = nil
+			}
+			vm, err := tt.manager.Start(ctx)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("Start error = %v, want containing %q", err, tt.wantErr)
 			}

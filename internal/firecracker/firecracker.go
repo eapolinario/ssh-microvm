@@ -47,6 +47,9 @@ func (m *Manager) Start(ctx context.Context) (*VM, error) {
 	if m.cfg == nil {
 		return nil, errors.New("config must be set")
 	}
+	if ctx == nil {
+		return nil, errors.New("context must be set")
+	}
 	id, err := util.RandomHex(6)
 	if err != nil {
 		return nil, err
@@ -140,6 +143,9 @@ func (m *Manager) Start(ctx context.Context) (*VM, error) {
 func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
 	if v == nil {
 		return nil
+	}
+	if ctx == nil {
+		return errors.New("context must be set")
 	}
 	defer v.closeLog()
 	if v.Cmd == nil || v.Cmd.Process == nil {
