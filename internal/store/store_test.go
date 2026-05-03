@@ -1559,6 +1559,54 @@ func TestAuditRequiresValidJSON(t *testing.T) {
 	}
 }
 
+func TestAuditRejectsBlankData(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	for _, data := range []string{"", " \t "} {
+		t.Run(data, func(t *testing.T) {
+			err := st.Audit(ctx, "blank.audit", data)
+			if err == nil {
+				t.Fatalf("Audit accepted blank data")
+			}
+			if !strings.Contains(err.Error(), "audit data must be set") {
+				t.Fatalf("Audit error = %q, want required data validation error", err)
+			}
+		})
+	}
+
+	var auditCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_events")
+	if err := row.Scan(&auditCount); err != nil {
+		t.Fatalf("query audit_events: %v", err)
+	}
+	if auditCount != 0 {
+		t.Fatalf("blank audit data event count = %d, want 0", auditCount)
+	}
+}
+
+func TestAuditRejectsWhitespacePaddedData(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	err := st.Audit(ctx, "padded.audit", ` {"ok":true} `)
+	if err == nil {
+		t.Fatalf("Audit accepted whitespace-padded data")
+	}
+	if !strings.Contains(err.Error(), "audit data must not contain surrounding whitespace") {
+		t.Fatalf("Audit error = %q, want surrounding whitespace validation error", err)
+	}
+
+	var auditCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_events")
+	if err := row.Scan(&auditCount); err != nil {
+		t.Fatalf("query audit_events: %v", err)
+	}
+	if auditCount != 0 {
+		t.Fatalf("whitespace-padded audit data event count = %d, want 0", auditCount)
+	}
+}
+
 func TestAuditRejectsBlankEventType(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
