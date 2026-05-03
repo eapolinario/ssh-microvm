@@ -147,14 +147,26 @@ func validateStartConfig(cfg *config.Config) error {
 	if strings.TrimSpace(cfg.StateDir) == "" {
 		return errors.New("state dir must be set")
 	}
+	if cfg.StateDir != strings.TrimSpace(cfg.StateDir) {
+		return errors.New("state dir must not contain surrounding whitespace")
+	}
 	if strings.TrimSpace(cfg.Firecracker) == "" {
 		return errors.New("firecracker binary must be set")
+	}
+	if cfg.Firecracker != strings.TrimSpace(cfg.Firecracker) {
+		return errors.New("firecracker binary must not contain surrounding whitespace")
 	}
 	if strings.TrimSpace(cfg.KernelImage) == "" {
 		return errors.New("kernel image must be set")
 	}
+	if cfg.KernelImage != strings.TrimSpace(cfg.KernelImage) {
+		return errors.New("kernel image must not contain surrounding whitespace")
+	}
 	if strings.TrimSpace(cfg.RootFS) == "" {
 		return errors.New("rootfs must be set")
+	}
+	if cfg.RootFS != strings.TrimSpace(cfg.RootFS) {
+		return errors.New("rootfs must not contain surrounding whitespace")
 	}
 	if cfg.VCPUCount <= 0 {
 		return errors.New("vcpu count must be > 0")

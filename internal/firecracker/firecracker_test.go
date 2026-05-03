@@ -189,11 +189,25 @@ func TestManagerStartRejectsInvalidConfigBeforeSideEffects(t *testing.T) {
 			wantErr: "state dir must be set",
 		},
 		{
+			name: "state dir with surrounding whitespace",
+			mutate: func(cfg *config.Config) {
+				cfg.StateDir = " " + cfg.StateDir + " "
+			},
+			wantErr: "state dir must not contain surrounding whitespace",
+		},
+		{
 			name: "blank firecracker binary",
 			mutate: func(cfg *config.Config) {
 				cfg.Firecracker = " \t "
 			},
 			wantErr: "firecracker binary must be set",
+		},
+		{
+			name: "firecracker binary with surrounding whitespace",
+			mutate: func(cfg *config.Config) {
+				cfg.Firecracker = " /bin/firecracker "
+			},
+			wantErr: "firecracker binary must not contain surrounding whitespace",
 		},
 		{
 			name: "blank kernel image",
@@ -203,11 +217,25 @@ func TestManagerStartRejectsInvalidConfigBeforeSideEffects(t *testing.T) {
 			wantErr: "kernel image must be set",
 		},
 		{
+			name: "kernel image with surrounding whitespace",
+			mutate: func(cfg *config.Config) {
+				cfg.KernelImage = " /kernel "
+			},
+			wantErr: "kernel image must not contain surrounding whitespace",
+		},
+		{
 			name: "blank rootfs",
 			mutate: func(cfg *config.Config) {
 				cfg.RootFS = " \t "
 			},
 			wantErr: "rootfs must be set",
+		},
+		{
+			name: "rootfs with surrounding whitespace",
+			mutate: func(cfg *config.Config) {
+				cfg.RootFS = " /rootfs "
+			},
+			wantErr: "rootfs must not contain surrounding whitespace",
 		},
 		{
 			name: "non-positive vcpus",
