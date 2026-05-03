@@ -158,6 +158,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 19 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 20")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 20: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 20 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -361,6 +368,65 @@ VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 
 	}
 	if !gotEndedAt.Valid || gotEndedAt.String != endedAt {
 		t.Fatalf("VM ended_at = %v, want %q", gotEndedAt, endedAt)
+	}
+}
+
+func TestEnsureSchemaEnforcesVMEndTimeFormat(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: testKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name    string
+		vmID    string
+		endedAt string
+	}{
+		{name: "space separated end time", vmID: "bad-space-end-time", endedAt: "2026-05-03 14:03:32"},
+		{name: "missing timezone end time", vmID: "bad-missing-timezone-end-time", endedAt: "2026-05-03T14:03:32"},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at, ended_at, exit_status)
+VALUES(?, ?, ?, ?, ?, ?, ?)`, tt.vmID, session.ID, filepath.Join(t.TempDir(), tt.vmID), 1234, now(), tt.endedAt, 0); err == nil {
+				t.Fatalf("inserted VM with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 1234, now()); err != nil {
+		t.Fatalf("insert valid active VM: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET ended_at = ?, exit_status = ? WHERE id = ?", "2026-05-03 14:03:32", 0, "vm-1"); err == nil {
+		t.Fatalf("updated VM to space separated end time, want trigger error")
+	}
+
+	validOffsetTime := "2026-05-03T14:03:32-04:00"
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET ended_at = ?, exit_status = ? WHERE id = ?", validOffsetTime, 0, "vm-1"); err != nil {
+		t.Fatalf("updated VM to valid offset end time: %v", err)
+	}
+
+	var gotEndedAt sql.NullString
+	row := st.db.QueryRowContext(ctx, "SELECT ended_at FROM vms WHERE id = ?", "vm-1")
+	if err := row.Scan(&gotEndedAt); err != nil {
+		t.Fatalf("query VM ended_at: %v", err)
+	}
+	if !gotEndedAt.Valid || gotEndedAt.String != validOffsetTime {
+		t.Fatalf("VM ended_at = %v, want %q", gotEndedAt, validOffsetTime)
 	}
 }
 
