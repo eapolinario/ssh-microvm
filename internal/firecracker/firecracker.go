@@ -220,9 +220,14 @@ func tapNameFor(prefix, id string) string {
 	if prefix == "" {
 		prefix = "tap"
 	}
-	name := strings.ReplaceAll(prefix+id, "-", "")
+	prefix = strings.ReplaceAll(prefix, "-", "")
+	id = strings.ReplaceAll(id, "-", "")
+	name := prefix + id
 	if len(name) > 15 {
-		return name[:15]
+		if len(id) >= 15 {
+			return id[:15]
+		}
+		return prefix[:15-len(id)] + id
 	}
 	return name
 }

@@ -71,12 +71,24 @@ func TestBuildBootArgsDoesNotTreatEmbeddedIPAsIPConfiguration(t *testing.T) {
 }
 
 func TestTapNameForFitsLinuxInterfaceLimit(t *testing.T) {
-	got := tapNameFor("tap-prefix-", "abcdef1234567890")
+	got := tapNameFor("tap-prefix-", "abcdef123456")
 	if len(got) > 15 {
 		t.Fatalf("tapNameFor() length = %d, want <= 15 (%q)", len(got), got)
 	}
-	if got != "tapprefixabcdef" {
-		t.Fatalf("tapNameFor() = %q, want %q", got, "tapprefixabcdef")
+	if got != "tapabcdef123456" {
+		t.Fatalf("tapNameFor() = %q, want %q", got, "tapabcdef123456")
+	}
+}
+
+func TestTapNameForKeepsVMIDWithLongPrefix(t *testing.T) {
+	first := tapNameFor("very-long-prefix", "abcdef123456")
+	second := tapNameFor("very-long-prefix", "123456abcdef")
+
+	if first == second {
+		t.Fatalf("tapNameFor() generated colliding names for distinct VM IDs: %q", first)
+	}
+	if !strings.HasSuffix(first, "abcdef123456") {
+		t.Fatalf("tapNameFor() = %q, want VM ID suffix to avoid tap collisions", first)
 	}
 }
 
