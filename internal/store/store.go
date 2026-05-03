@@ -109,6 +109,9 @@ func (s *Store) HasKey(ctx context.Context, fingerprint string) (bool, error) {
 	if isBlank(fingerprint) {
 		return false, errors.New("key fingerprint must be set")
 	}
+	if hasSurroundingWhitespace(fingerprint) {
+		return false, errors.New("key fingerprint must not contain surrounding whitespace")
+	}
 	row := s.db.QueryRowContext(ctx, "SELECT COUNT(1) FROM keys WHERE fingerprint = ?", fingerprint)
 	var count int
 	if err := row.Scan(&count); err != nil {
@@ -124,8 +127,14 @@ func (s *Store) EnsureUserAndKey(ctx context.Context, username, fingerprint, pub
 	if isBlank(username) {
 		return "", errors.New("username must be set")
 	}
+	if hasSurroundingWhitespace(username) {
+		return "", errors.New("username must not contain surrounding whitespace")
+	}
 	if isBlank(fingerprint) {
 		return "", errors.New("key fingerprint must be set")
+	}
+	if hasSurroundingWhitespace(fingerprint) {
+		return "", errors.New("key fingerprint must not contain surrounding whitespace")
 	}
 	if isBlank(publicKey) {
 		return "", errors.New("public key must be set")
@@ -282,6 +291,10 @@ func now() string {
 
 func isBlank(value string) bool {
 	return strings.TrimSpace(value) == ""
+}
+
+func hasSurroundingWhitespace(value string) bool {
+	return value != strings.TrimSpace(value)
 }
 
 func (s *Store) validate(ctx context.Context) error {

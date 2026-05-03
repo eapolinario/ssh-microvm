@@ -540,6 +540,49 @@ func TestEnsureUserAndKeyRejectsBlankInputs(t *testing.T) {
 	}
 }
 
+func TestEnsureUserAndKeyRejectsWhitespacePaddedMetadata(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	tests := []struct {
+		name        string
+		username    string
+		fingerprint string
+	}{
+		{
+			name:        "padded username",
+			username:    " alice ",
+			fingerprint: "SHA256:test",
+		},
+		{
+			name:        "padded fingerprint",
+			username:    "alice",
+			fingerprint: " SHA256:test ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := st.EnsureUserAndKey(ctx, tt.username, tt.fingerprint, "ssh-ed25519 AAAA alice"); err == nil {
+				t.Fatalf("EnsureUserAndKey accepted %s", tt.name)
+			}
+		})
+	}
+
+	var userCount, keyCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users")
+	if err := row.Scan(&userCount); err != nil {
+		t.Fatalf("query users: %v", err)
+	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM keys")
+	if err := row.Scan(&keyCount); err != nil {
+		t.Fatalf("query keys: %v", err)
+	}
+	if userCount != 0 || keyCount != 0 {
+		t.Fatalf("padded EnsureUserAndKey inserted users=%d keys=%d, want 0/0", userCount, keyCount)
+	}
+}
+
 func TestHasKeyRejectsBlankFingerprint(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -550,6 +593,23 @@ func TestHasKeyRejectsBlankFingerprint(t *testing.T) {
 	}
 	if hasKey {
 		t.Fatalf("HasKey returned true for a blank fingerprint")
+	}
+}
+
+func TestHasKeyRejectsWhitespacePaddedFingerprint(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice"); err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	hasKey, err := st.HasKey(ctx, " SHA256:test ")
+	if err == nil {
+		t.Fatalf("HasKey accepted a whitespace-padded fingerprint")
+	}
+	if hasKey {
+		t.Fatalf("HasKey returned true for a whitespace-padded fingerprint")
 	}
 }
 
