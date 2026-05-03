@@ -276,14 +276,26 @@ func (s *Store) CreateVM(ctx context.Context, vm VM) error {
 	if isBlank(vm.ID) {
 		return errors.New("VM ID must be set")
 	}
+	if hasSurroundingWhitespace(vm.ID) {
+		return errors.New("VM ID must not contain surrounding whitespace")
+	}
 	if isBlank(vm.SessionID) {
 		return errors.New("VM session ID must be set")
+	}
+	if hasSurroundingWhitespace(vm.SessionID) {
+		return errors.New("VM session ID must not contain surrounding whitespace")
 	}
 	if isBlank(vm.StateDir) {
 		return errors.New("VM state directory must be set")
 	}
+	if hasSurroundingWhitespace(vm.StateDir) {
+		return errors.New("VM state directory must not contain surrounding whitespace")
+	}
 	if isBlank(vm.StartedAt) {
 		return errors.New("VM start time must be set")
+	}
+	if hasSurroundingWhitespace(vm.StartedAt) {
+		return errors.New("VM start time must not contain surrounding whitespace")
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
 VALUES(?, ?, ?, ?, ?)`, vm.ID, vm.SessionID, vm.StateDir, vm.FCPid, vm.StartedAt)

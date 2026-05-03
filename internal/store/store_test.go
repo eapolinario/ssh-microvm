@@ -1028,6 +1028,85 @@ func TestCreateVMRejectsBlankFields(t *testing.T) {
 	}
 }
 
+func TestCreateVMRejectsWhitespacePaddedFields(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	valid := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	tests := []struct {
+		name   string
+		mutate func(*VM)
+	}{
+		{
+			name: "padded ID",
+			mutate: func(vm *VM) {
+				vm.ID = " " + vm.ID + " "
+			},
+		},
+		{
+			name: "padded session ID",
+			mutate: func(vm *VM) {
+				vm.SessionID = " " + vm.SessionID + " "
+			},
+		},
+		{
+			name: "padded state directory",
+			mutate: func(vm *VM) {
+				vm.StateDir = " " + vm.StateDir + " "
+			},
+		},
+		{
+			name: "padded start time",
+			mutate: func(vm *VM) {
+				vm.StartedAt = " " + vm.StartedAt + " "
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vm := valid
+			tt.mutate(&vm)
+			if err := st.CreateVM(ctx, vm); err == nil {
+				t.Fatalf("CreateVM accepted %s", tt.name)
+			} else if err == sql.ErrNoRows {
+				t.Fatalf("CreateVM returned sql.ErrNoRows for %s, want validation error", tt.name)
+			}
+		})
+	}
+
+	var vmCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM vms")
+	if err := row.Scan(&vmCount); err != nil {
+		t.Fatalf("query vms: %v", err)
+	}
+	if vmCount != 0 {
+		t.Fatalf("whitespace-padded CreateVM inserted VMs=%d, want 0", vmCount)
+	}
+}
+
 func TestAuditRequiresValidJSON(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
