@@ -322,6 +322,9 @@ func (s *Store) Audit(ctx context.Context, eventType, dataJSON string) error {
 	if isBlank(eventType) {
 		return errors.New("audit event type must be set")
 	}
+	if hasSurroundingWhitespace(eventType) {
+		return errors.New("audit event type must not contain surrounding whitespace")
+	}
 	if !json.Valid([]byte(dataJSON)) {
 		return errors.New("audit data must be valid JSON")
 	}

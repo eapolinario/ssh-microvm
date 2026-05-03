@@ -1147,6 +1147,24 @@ func TestAuditRejectsBlankEventType(t *testing.T) {
 	}
 }
 
+func TestAuditRejectsWhitespacePaddedEventType(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if err := st.Audit(ctx, " test.audit ", `{"ok":true}`); err == nil {
+		t.Fatalf("Audit accepted whitespace-padded event type")
+	}
+
+	var auditCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_events")
+	if err := row.Scan(&auditCount); err != nil {
+		t.Fatalf("query audit_events: %v", err)
+	}
+	if auditCount != 0 {
+		t.Fatalf("whitespace-padded audit event count = %d, want 0", auditCount)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 
