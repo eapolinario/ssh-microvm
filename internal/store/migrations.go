@@ -177,4 +177,22 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 7,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_vms_exit_status_insert_valid
+BEFORE INSERT ON vms
+WHEN NEW.exit_status IS NOT NULL AND NEW.exit_status < 0
+BEGIN
+	SELECT RAISE(ABORT, 'VM exit status must be >= 0');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_exit_status_update_valid
+BEFORE UPDATE OF exit_status ON vms
+WHEN NEW.exit_status IS NOT NULL AND NEW.exit_status < 0
+BEGIN
+	SELECT RAISE(ABORT, 'VM exit status must be >= 0');
+END;
+`,
+	},
 }

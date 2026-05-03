@@ -67,6 +67,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 6 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 7")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 7: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 7 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -77,6 +84,48 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("table %s count = %d, want 1", table, count)
 		}
+	}
+}
+
+func TestEnsureSchemaEnforcesVMExitStatusValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: testKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at, exit_status)
+VALUES(?, ?, ?, ?, ?, ?)`, "bad-exit-status-vm", session.ID, filepath.Join(t.TempDir(), "bad-vm"), 1234, now(), -1); err == nil {
+		t.Fatalf("inserted VM with negative exit status, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 1234, now()); err != nil {
+		t.Fatalf("insert valid VM: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET exit_status = ? WHERE id = ?", -1, "vm-1"); err == nil {
+		t.Fatalf("updated VM to negative exit status, want trigger error")
+	}
+
+	var exitStatus sql.NullInt64
+	row := st.db.QueryRowContext(ctx, "SELECT exit_status FROM vms WHERE id = ?", "vm-1")
+	if err := row.Scan(&exitStatus); err != nil {
+		t.Fatalf("query VM exit_status: %v", err)
+	}
+	if exitStatus.Valid {
+		t.Fatalf("VM exit_status = %d, want NULL", exitStatus.Int64)
 	}
 }
 
