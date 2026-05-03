@@ -1086,6 +1086,50 @@ func TestEndSessionRejectsUnsupportedTerminalStatus(t *testing.T) {
 	}
 }
 
+func TestEndSessionRejectsAlreadyEndedSession(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := st.EndSession(ctx, session.ID, "closed"); err != nil {
+		t.Fatalf("EndSession: %v", err)
+	}
+
+	err = st.EndSession(ctx, session.ID, "vm_failed")
+	if err != sql.ErrNoRows {
+		t.Fatalf("second EndSession error = %v, want sql.ErrNoRows", err)
+	}
+
+	var (
+		status  string
+		endedAt string
+	)
+	row := st.db.QueryRowContext(ctx, "SELECT status, ended_at FROM sessions WHERE id = ?", session.ID)
+	if err := row.Scan(&status, &endedAt); err != nil {
+		t.Fatalf("query session lifecycle state: %v", err)
+	}
+	if status != "closed" {
+		t.Fatalf("session status = %q, want closed", status)
+	}
+	if endedAt == "" {
+		t.Fatalf("session ended_at was not set by first EndSession")
+	}
+}
+
 func TestAttachVMRequiresExistingVM(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
