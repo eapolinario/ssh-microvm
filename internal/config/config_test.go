@@ -108,6 +108,16 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			wantErr: "--rootfs is required",
 		},
 		{
+			name:    "invalid listen address",
+			args:    requiredArgs("--listen", "127.0.0.1"),
+			wantErr: "--listen must be a valid TCP address: 127.0.0.1",
+		},
+		{
+			name:    "invalid listen port",
+			args:    requiredArgs("--listen", "127.0.0.1:not-a-port"),
+			wantErr: "--listen port must be valid: not-a-port",
+		},
+		{
 			name:    "invalid auth mode",
 			args:    requiredArgs("--auth-mode", "invalid"),
 			wantErr: "invalid --auth-mode: invalid",

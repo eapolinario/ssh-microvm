@@ -81,6 +81,9 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if cfg.HostKeyPath == "" {
 		cfg.HostKeyPath = filepath.Join(cfg.StateDir, "ssh_host_ed25519")
 	}
+	if err := validateListenAddr(cfg.ListenAddr); err != nil {
+		return nil, err
+	}
 	if cfg.KernelImage == "" {
 		return nil, errors.New("--kernel is required")
 	}
@@ -124,4 +127,18 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 func isIPv4(value string) bool {
 	ip := net.ParseIP(value)
 	return ip != nil && ip.To4() != nil
+}
+
+func validateListenAddr(value string) error {
+	_, port, err := net.SplitHostPort(value)
+	if err != nil {
+		return fmt.Errorf("--listen must be a valid TCP address: %s", value)
+	}
+	if port == "" {
+		return errors.New("--listen port must be set")
+	}
+	if _, err := net.LookupPort("tcp", port); err != nil {
+		return fmt.Errorf("--listen port must be valid: %s", port)
+	}
+	return nil
 }
