@@ -570,6 +570,41 @@ func TestCreateSessionRejectsWhitespacePaddedFields(t *testing.T) {
 	}
 }
 
+func TestCreateSessionRejectsInvalidStartTime(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      "2026-05-03 14:03:32",
+		Status:         "active",
+	}
+	err = st.CreateSession(ctx, session)
+	if err == nil {
+		t.Fatalf("CreateSession accepted invalid start time")
+	}
+	if !strings.Contains(err.Error(), "session start time must be a valid RFC3339 timestamp") {
+		t.Fatalf("CreateSession error = %q, want RFC3339 timestamp validation error", err)
+	}
+
+	var sessionCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions")
+	if err := row.Scan(&sessionCount); err != nil {
+		t.Fatalf("query sessions: %v", err)
+	}
+	if sessionCount != 0 {
+		t.Fatalf("invalid start time CreateSession inserted sessions=%d, want 0", sessionCount)
+	}
+}
+
 func TestEnsureUserAndKeyRejectsBlankInputs(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -1159,6 +1194,51 @@ func TestCreateVMRejectsWhitespacePaddedFields(t *testing.T) {
 	}
 	if vmCount != 0 {
 		t.Fatalf("whitespace-padded CreateVM inserted VMs=%d, want 0", vmCount)
+	}
+}
+
+func TestCreateVMRejectsInvalidStartTime(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	vm := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: "2026-05-03 14:03:32",
+	}
+	err = st.CreateVM(ctx, vm)
+	if err == nil {
+		t.Fatalf("CreateVM accepted invalid start time")
+	}
+	if !strings.Contains(err.Error(), "VM start time must be a valid RFC3339 timestamp") {
+		t.Fatalf("CreateVM error = %q, want RFC3339 timestamp validation error", err)
+	}
+
+	var vmCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM vms")
+	if err := row.Scan(&vmCount); err != nil {
+		t.Fatalf("query vms: %v", err)
+	}
+	if vmCount != 0 {
+		t.Fatalf("invalid start time CreateVM inserted VMs=%d, want 0", vmCount)
 	}
 }
 

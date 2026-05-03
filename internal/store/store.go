@@ -220,6 +220,9 @@ func (s *Store) CreateSession(ctx context.Context, session Session) error {
 	if hasSurroundingWhitespace(session.StartedAt) {
 		return errors.New("session start time must not contain surrounding whitespace")
 	}
+	if err := validateTimestamp("session start time", session.StartedAt); err != nil {
+		return err
+	}
 	if isBlank(session.Status) {
 		return errors.New("session status must be set")
 	}
@@ -297,6 +300,9 @@ func (s *Store) CreateVM(ctx context.Context, vm VM) error {
 	if hasSurroundingWhitespace(vm.StartedAt) {
 		return errors.New("VM start time must not contain surrounding whitespace")
 	}
+	if err := validateTimestamp("VM start time", vm.StartedAt); err != nil {
+		return err
+	}
 	if vm.FCPid <= 0 {
 		return errors.New("VM Firecracker PID must be > 0")
 	}
@@ -349,6 +355,13 @@ func isBlank(value string) bool {
 
 func hasSurroundingWhitespace(value string) bool {
 	return value != strings.TrimSpace(value)
+}
+
+func validateTimestamp(label, value string) error {
+	if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+		return fmt.Errorf("%s must be a valid RFC3339 timestamp", label)
+	}
+	return nil
 }
 
 func (s *Store) validate(ctx context.Context) error {
