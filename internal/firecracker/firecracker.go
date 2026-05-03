@@ -174,6 +174,9 @@ func validateStartConfig(cfg *config.Config) error {
 	if cfg.MemMiB <= 0 {
 		return errors.New("memory must be > 0")
 	}
+	if cfg.GracefulStopS <= 0 {
+		return errors.New("graceful shutdown timeout must be > 0")
+	}
 	if strings.TrimSpace(cfg.GuestIP) == "" {
 		return errors.New("guest IP must be set")
 	}

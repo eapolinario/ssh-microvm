@@ -252,6 +252,13 @@ func TestManagerStartRejectsInvalidConfigBeforeSideEffects(t *testing.T) {
 			wantErr: "memory must be > 0",
 		},
 		{
+			name: "non-positive graceful shutdown timeout",
+			mutate: func(cfg *config.Config) {
+				cfg.GracefulStopS = 0
+			},
+			wantErr: "graceful shutdown timeout must be > 0",
+		},
+		{
 			name: "blank guest ip",
 			mutate: func(cfg *config.Config) {
 				cfg.GuestIP = " \t "
@@ -758,14 +765,15 @@ func newUnixHTTPServer(t *testing.T, socketPath string, handler http.Handler) *h
 
 func validStartConfig(stateDir string) *config.Config {
 	return &config.Config{
-		StateDir:    stateDir,
-		Firecracker: "firecracker",
-		KernelImage: "/kernel",
-		RootFS:      "/rootfs",
-		VCPUCount:   1,
-		MemMiB:      512,
-		GuestIP:     "172.16.0.2",
-		HostIP:      "172.16.0.1",
-		TapPrefix:   "tap",
+		StateDir:      stateDir,
+		Firecracker:   "firecracker",
+		KernelImage:   "/kernel",
+		RootFS:        "/rootfs",
+		VCPUCount:     1,
+		MemMiB:        512,
+		GracefulStopS: 2,
+		GuestIP:       "172.16.0.2",
+		HostIP:        "172.16.0.1",
+		TapPrefix:     "tap",
 	}
 }
