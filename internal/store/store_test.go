@@ -347,6 +347,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 46 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 47")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 47: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 47 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -756,6 +763,66 @@ VALUES(?, ?, ?, ?, ?)`, vmID, sessionID, filepath.Join(t.TempDir(), vmID), 1234,
 	}
 	if !gotVMID.Valid || gotVMID.String != vmID {
 		t.Fatalf("session vm_id = %v, want %q", gotVMID, vmID)
+	}
+}
+
+func TestEnsureSchemaEnforcesKeyUserIDValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID := "user-1"
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", userID, "alice", now(), now()); err != nil {
+		t.Fatalf("insert valid user: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name   string
+		userID string
+	}{
+		{name: "blank key user ID", userID: " \t "},
+		{name: "padded key user ID", userID: " user-1 "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, tt.userID, testAuthorizedKey, now(), now())
+			if err == nil {
+				t.Fatalf("inserted key with %s, want trigger error", tt.name)
+			}
+			if !strings.Contains(err.Error(), "key user ID must be set and not contain surrounding whitespace") {
+				t.Fatalf("insert key with %s error = %v, want key user ID trigger error", tt.name, err)
+			}
+		})
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, userID, testAuthorizedKey, now(), now()); err != nil {
+		t.Fatalf("insert valid key: %v", err)
+	}
+	for _, tt := range []struct {
+		name   string
+		userID string
+	}{
+		{name: "blank key user ID", userID: "\n\t"},
+		{name: "padded key user ID", userID: "\t" + userID + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			_, err := st.db.ExecContext(ctx, "UPDATE keys SET user_id = ? WHERE fingerprint = ?", tt.userID, testKeyFingerprint)
+			if err == nil {
+				t.Fatalf("updated key to %s, want trigger error", tt.name)
+			}
+			if !strings.Contains(err.Error(), "key user ID must be set and not contain surrounding whitespace") {
+				t.Fatalf("update key to %s error = %v, want key user ID trigger error", tt.name, err)
+			}
+		})
+	}
+
+	var gotUserID string
+	row := st.db.QueryRowContext(ctx, "SELECT user_id FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&gotUserID); err != nil {
+		t.Fatalf("query key user ID: %v", err)
+	}
+	if gotUserID != userID {
+		t.Fatalf("key user_id = %q, want %q", gotUserID, userID)
 	}
 }
 
