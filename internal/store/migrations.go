@@ -740,4 +740,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 29,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_users_created_at_insert_valid
+BEFORE INSERT ON users
+WHEN trim(NEW.created_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.created_at != trim(NEW.created_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'user creation time must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_users_created_at_update_valid
+BEFORE UPDATE OF created_at ON users
+WHEN trim(NEW.created_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.created_at != trim(NEW.created_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'user creation time must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
