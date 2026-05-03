@@ -4,16 +4,42 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 
 	"ssh-microvm/internal/config"
 	"ssh-microvm/internal/store"
 )
+
+func TestServeListenerReturnsOnContextCancellation(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- (&Server{}).ServeListener(ctx, ln)
+	}()
+
+	cancel()
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("ServeListener returned error after context cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("ServeListener did not return after context cancellation")
+	}
+}
 
 func TestLoadOrCreateHostKeyCreatesAndReusesKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ssh_host_ed25519")
