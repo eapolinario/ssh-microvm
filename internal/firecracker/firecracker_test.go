@@ -734,6 +734,12 @@ func TestPutJSONRejectsInvalidState(t *testing.T) {
 			path:    "machine-config",
 			wantErr: "firecracker api path must start with /",
 		},
+		{
+			name:    "path with surrounding whitespace",
+			client:  http.DefaultClient,
+			path:    "/machine-config ",
+			wantErr: "firecracker api path must not contain surrounding whitespace",
+		},
 	}
 
 	for _, tt := range tests {

@@ -483,6 +483,9 @@ func putJSON(client *http.Client, path string, payload any) error {
 	if strings.TrimSpace(path) == "" {
 		return errors.New("firecracker api path is empty")
 	}
+	if path != strings.TrimSpace(path) {
+		return errors.New("firecracker api path must not contain surrounding whitespace")
+	}
 	if !strings.HasPrefix(path, "/") {
 		return fmt.Errorf("firecracker api path must start with /: %s", path)
 	}
