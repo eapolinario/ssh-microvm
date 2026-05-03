@@ -184,11 +184,15 @@ func buildBootArgs(cfg *config.Config) string {
 	if cfg == nil {
 		return ""
 	}
-	if hasIPArg(cfg.BootArgs) {
-		return cfg.BootArgs
+	bootArgs := strings.TrimSpace(cfg.BootArgs)
+	if hasIPArg(bootArgs) {
+		return bootArgs
 	}
 	ipArg := fmt.Sprintf("ip=%s::%s:255.255.255.0::eth0:off", cfg.GuestIP, cfg.HostIP)
-	return fmt.Sprintf("%s %s", cfg.BootArgs, ipArg)
+	if bootArgs == "" {
+		return ipArg
+	}
+	return fmt.Sprintf("%s %s", bootArgs, ipArg)
 }
 
 func hasIPArg(args string) bool {

@@ -99,6 +99,20 @@ func TestBuildBootArgsDoesNotTreatEmbeddedIPAsIPConfiguration(t *testing.T) {
 	}
 }
 
+func TestBuildBootArgsWithoutBaseArgsDoesNotAddLeadingWhitespace(t *testing.T) {
+	cfg := &config.Config{
+		BootArgs: " \t ",
+		GuestIP:  "172.16.0.2",
+		HostIP:   "172.16.0.1",
+	}
+
+	got := buildBootArgs(cfg)
+	want := "ip=172.16.0.2::172.16.0.1:255.255.255.0::eth0:off"
+	if got != want {
+		t.Fatalf("buildBootArgs() = %q, want %q", got, want)
+	}
+}
+
 func TestTapNameForFitsLinuxInterfaceLimit(t *testing.T) {
 	got := tapNameFor("tap-prefix-", "abcdef123456")
 	if len(got) > 15 {
