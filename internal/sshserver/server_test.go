@@ -640,7 +640,7 @@ func TestPublicKeyCallbackAuthModes(t *testing.T) {
 	signer := newTestSigner(t)
 	key := signer.PublicKey()
 	fingerprint := ssh.FingerprintSHA256(key)
-	authorizedKey := string(ssh.MarshalAuthorizedKey(key))
+	authorizedKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
 
 	t.Run("auto enroll mode accepts unknown key", func(t *testing.T) {
 		server := &Server{

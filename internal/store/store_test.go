@@ -700,6 +700,7 @@ func TestEnsureUserAndKeyRejectsWhitespacePaddedMetadata(t *testing.T) {
 		name        string
 		username    string
 		fingerprint string
+		publicKey   string
 	}{
 		{
 			name:        "padded username",
@@ -711,11 +712,21 @@ func TestEnsureUserAndKeyRejectsWhitespacePaddedMetadata(t *testing.T) {
 			username:    "alice",
 			fingerprint: " SHA256:test ",
 		},
+		{
+			name:        "padded public key",
+			username:    "alice",
+			fingerprint: "SHA256:test",
+			publicKey:   " ssh-ed25519 AAAA alice\n",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := st.EnsureUserAndKey(ctx, tt.username, tt.fingerprint, "ssh-ed25519 AAAA alice"); err == nil {
+			publicKey := tt.publicKey
+			if publicKey == "" {
+				publicKey = "ssh-ed25519 AAAA alice"
+			}
+			if _, err := st.EnsureUserAndKey(ctx, tt.username, tt.fingerprint, publicKey); err == nil {
 				t.Fatalf("EnsureUserAndKey accepted %s", tt.name)
 			}
 		})

@@ -388,7 +388,7 @@ func (s *Server) publicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey) (*s
 	}
 
 	fingerprint := ssh.FingerprintSHA256(key)
-	pubKey := string(ssh.MarshalAuthorizedKey(key))
+	pubKey := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
 
 	if err := validateAuthMode(s.cfg.AuthMode); err != nil {
 		return nil, err

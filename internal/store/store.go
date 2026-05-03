@@ -139,6 +139,9 @@ func (s *Store) EnsureUserAndKey(ctx context.Context, username, fingerprint, pub
 	if isBlank(publicKey) {
 		return "", errors.New("public key must be set")
 	}
+	if hasSurroundingWhitespace(publicKey) {
+		return "", errors.New("public key must not contain surrounding whitespace")
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", err
