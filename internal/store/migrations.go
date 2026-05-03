@@ -1072,4 +1072,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 44,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_key_fingerprint_insert_valid
+BEFORE INSERT ON sessions
+WHEN trim(NEW.key_fingerprint, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.key_fingerprint != trim(NEW.key_fingerprint, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'session key fingerprint must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_key_fingerprint_update_valid
+BEFORE UPDATE OF key_fingerprint ON sessions
+WHEN trim(NEW.key_fingerprint, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.key_fingerprint != trim(NEW.key_fingerprint, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'session key fingerprint must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
