@@ -2,6 +2,11 @@ package firecracker
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"net"
+	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,4 +64,117 @@ func TestTapNameForFitsLinuxInterfaceLimit(t *testing.T) {
 	if got != "tapprefixabcdef" {
 		t.Fatalf("tapNameFor() = %q, want %q", got, "tapprefixabcdef")
 	}
+}
+
+func TestRandomMACIsDeterministicAndLocallyAdministered(t *testing.T) {
+	got := randomMAC("vm-seed")
+	if got != randomMAC("vm-seed") {
+		t.Fatalf("randomMAC() was not deterministic for the same seed")
+	}
+	if got == randomMAC("other-seed") {
+		t.Fatalf("randomMAC() returned the same address for different seeds: %q", got)
+	}
+	if !strings.HasPrefix(got, "02:") {
+		t.Fatalf("randomMAC() = %q, want locally administered unicast prefix 02", got)
+	}
+}
+
+func TestWaitForSocket(t *testing.T) {
+	socketPath := t.TempDir() + "/firecracker.sock"
+
+	if err := waitForSocket(socketPath, 20*time.Millisecond); err == nil {
+		t.Fatalf("waitForSocket() succeeded for missing socket")
+	}
+
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen unix socket: %v", err)
+	}
+	defer ln.Close()
+
+	if err := waitForSocket(socketPath, time.Second); err != nil {
+		t.Fatalf("waitForSocket() existing socket returned error: %v", err)
+	}
+}
+
+func TestPutJSONOverUnixSocket(t *testing.T) {
+	socketPath := t.TempDir() + "/firecracker.sock"
+	requests := make(chan map[string]any, 1)
+	server := newUnixHTTPServer(t, socketPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		if r.URL.Path != "/machine-config" {
+			t.Errorf("path = %s, want /machine-config", r.URL.Path)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		requests <- payload
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	err := putJSON(newUnixClient(socketPath), "/machine-config", map[string]any{
+		"vcpu_count": 2,
+		"smt":        false,
+	})
+	if err != nil {
+		t.Fatalf("putJSON() returned error: %v", err)
+	}
+
+	got := <-requests
+	if got["vcpu_count"] != float64(2) {
+		t.Fatalf("vcpu_count = %#v, want 2", got["vcpu_count"])
+	}
+	if got["smt"] != false {
+		t.Fatalf("smt = %#v, want false", got["smt"])
+	}
+}
+
+func TestPutJSONReturnsAPIErrorBody(t *testing.T) {
+	socketPath := t.TempDir() + "/firecracker.sock"
+	server := newUnixHTTPServer(t, socketPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "bad config", http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	err := putJSON(newUnixClient(socketPath), "/machine-config", map[string]any{"bad": true})
+	if err == nil {
+		t.Fatalf("putJSON() succeeded, want API error")
+	}
+	if !strings.Contains(err.Error(), "/machine-config") ||
+		!strings.Contains(err.Error(), "400 Bad Request") ||
+		!strings.Contains(err.Error(), "bad config") {
+		t.Fatalf("putJSON() error = %q, want path, status, and response body", err)
+	}
+}
+
+func TestPutJSONReturnsMarshalError(t *testing.T) {
+	err := putJSON(http.DefaultClient, "/machine-config", map[string]any{"bad": make(chan int)})
+	if err == nil {
+		t.Fatalf("putJSON() succeeded, want marshal error")
+	}
+}
+
+func newUnixHTTPServer(t *testing.T, socketPath string, handler http.Handler) *http.Server {
+	t.Helper()
+
+	ln, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatalf("listen unix socket: %v", err)
+	}
+
+	server := &http.Server{Handler: handler}
+	go func() {
+		err := server.Serve(ln)
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Errorf("unix HTTP server: %v", err)
+		}
+	}()
+	t.Cleanup(func() {
+		_ = server.Close()
+	})
+	return server
 }
