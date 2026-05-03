@@ -876,4 +876,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 35,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_added_at_insert_valid
+BEFORE INSERT ON keys
+WHEN trim(NEW.added_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.added_at != trim(NEW.added_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'key addition time must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_added_at_update_valid
+BEFORE UPDATE OF added_at ON keys
+WHEN trim(NEW.added_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.added_at != trim(NEW.added_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'key addition time must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }

@@ -263,6 +263,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 34 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 35")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 35: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 35 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -601,6 +608,59 @@ VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", testAuthorizedKey, now(), 
 	}
 	if gotPublicKey != testAuthorizedKey {
 		t.Fatalf("key public_key = %q, want %q", gotPublicKey, testAuthorizedKey)
+	}
+}
+
+func TestEnsureSchemaEnforcesKeyAddedAtValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", now(), now()); err != nil {
+		t.Fatalf("insert user fixture: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name        string
+		fingerprint string
+		addedAt     string
+	}{
+		{name: "blank addition time", fingerprint: "bad-blank-added-at", addedAt: " \t "},
+		{name: "padded addition time", fingerprint: "bad-padded-added-at", addedAt: " " + now() + " "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, tt.fingerprint, "user-1", testAuthorizedKey, tt.addedAt, now()); err == nil {
+				t.Fatalf("inserted key with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	addedAt := now()
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", testAuthorizedKey, addedAt, now()); err != nil {
+		t.Fatalf("insert valid key: %v", err)
+	}
+	for _, tt := range []struct {
+		name    string
+		addedAt string
+	}{
+		{name: "blank addition time", addedAt: "\n\t"},
+		{name: "padded addition time", addedAt: "\t" + now() + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE keys SET added_at = ? WHERE fingerprint = ?", tt.addedAt, testKeyFingerprint); err == nil {
+				t.Fatalf("updated key to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotAddedAt string
+	row := st.db.QueryRowContext(ctx, "SELECT added_at FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&gotAddedAt); err != nil {
+		t.Fatalf("query key added_at: %v", err)
+	}
+	if gotAddedAt != addedAt {
+		t.Fatalf("key added_at = %q, want %q", gotAddedAt, addedAt)
 	}
 }
 
