@@ -217,11 +217,11 @@ func runCmd(ctx context.Context, name string, args ...string) error {
 }
 
 func tapNameFor(prefix, id string) string {
+	prefix = sanitizeTapNamePart(prefix)
 	if prefix == "" {
 		prefix = "tap"
 	}
-	prefix = strings.ReplaceAll(prefix, "-", "")
-	id = strings.ReplaceAll(id, "-", "")
+	id = sanitizeTapNamePart(id)
 	name := prefix + id
 	if len(name) > 15 {
 		if len(id) >= 15 {
@@ -230,6 +230,21 @@ func tapNameFor(prefix, id string) string {
 		return prefix[:15-len(id)] + id
 	}
 	return name
+}
+
+func sanitizeTapNamePart(value string) string {
+	var b strings.Builder
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+			b.WriteRune(r)
+		case r >= 'A' && r <= 'Z':
+			b.WriteRune(r)
+		case r >= '0' && r <= '9':
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func waitForSocket(path string, timeout time.Duration) error {

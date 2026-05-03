@@ -92,6 +92,25 @@ func TestTapNameForKeepsVMIDWithLongPrefix(t *testing.T) {
 	}
 }
 
+func TestTapNameForSanitizesInvalidCharacters(t *testing.T) {
+	got := tapNameFor("tap/: bad-", "ab-cd/12:34")
+
+	if got != "tapbadabcd1234" {
+		t.Fatalf("tapNameFor() = %q, want sanitized name %q", got, "tapbadabcd1234")
+	}
+	if strings.ContainsAny(got, "/: -") {
+		t.Fatalf("tapNameFor() = %q, want no invalid tap name characters", got)
+	}
+}
+
+func TestTapNameForDefaultsEmptySanitizedPrefix(t *testing.T) {
+	got := tapNameFor("---:://", "abcdef123456")
+
+	if got != "tapabcdef123456" {
+		t.Fatalf("tapNameFor() = %q, want default tap prefix after sanitization", got)
+	}
+}
+
 func TestRandomMACIsDeterministicAndLocallyAdministered(t *testing.T) {
 	got := randomMAC("vm-seed")
 	if got != randomMAC("vm-seed") {
