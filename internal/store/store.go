@@ -248,9 +248,9 @@ func (s *Store) CreateSession(ctx context.Context, session Session) error {
 	if session.Status != "active" {
 		return errors.New("session status must be active")
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
-VALUES(?, ?, ?, ?, ?, ?)`, session.ID, session.UserID, session.KeyFingerprint, session.RemoteAddr, session.StartedAt, session.Status)
-	return err
+	return execOne(ctx, s.db, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+SELECT ?, ?, ?, ?, ?, ?
+WHERE EXISTS (SELECT 1 FROM keys WHERE fingerprint = ? AND user_id = ?)`, session.ID, session.UserID, session.KeyFingerprint, session.RemoteAddr, session.StartedAt, session.Status, session.KeyFingerprint, session.UserID)
 }
 
 func (s *Store) EndSession(ctx context.Context, sessionID, status string) error {

@@ -10,8 +10,10 @@ import (
 )
 
 const (
-	testAuthorizedKey  = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPh2vDLbN/0Bu93v5NvdlRQ7WOpknAUgJ0l1ofhOYTpf"
-	testKeyFingerprint = "SHA256:UecLtXI8mKCwPSeFNoPFanZ4gYYgIREcsLQBav+pqAg"
+	testAuthorizedKey       = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPh2vDLbN/0Bu93v5NvdlRQ7WOpknAUgJ0l1ofhOYTpf"
+	testKeyFingerprint      = "SHA256:UecLtXI8mKCwPSeFNoPFanZ4gYYgIREcsLQBav+pqAg"
+	testOtherAuthorizedKey  = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBp154TtDlncesM4JmySe6K3G8KtiAt6PYdPUiWGLFr6"
+	testOtherKeyFingerprint = "SHA256:dGAIKjPAvDNRn2eUYFTajUJGNHzLaUHgJsFOfgFzlyI"
 )
 
 func TestEnsureSchemaIsIdempotent(t *testing.T) {
@@ -411,7 +413,41 @@ func TestCreateSessionRequiresExistingUserAndKey(t *testing.T) {
 		Status:         "active",
 	})
 	if err == nil {
-		t.Fatalf("CreateSession with missing user/key succeeded, want foreign key error")
+		t.Fatalf("CreateSession with missing user/key succeeded, want error")
+	}
+}
+
+func TestCreateSessionRequiresKeyOwnedByUser(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	aliceID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey alice: %v", err)
+	}
+	if _, err := st.EnsureUserAndKey(ctx, "bob", testOtherKeyFingerprint, testOtherAuthorizedKey); err != nil {
+		t.Fatalf("EnsureUserAndKey bob: %v", err)
+	}
+
+	err = st.CreateSession(ctx, Session{
+		ID:             "cross-key-session",
+		UserID:         aliceID,
+		KeyFingerprint: testOtherKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	})
+	if err != sql.ErrNoRows {
+		t.Fatalf("CreateSession cross-user key error = %v, want sql.ErrNoRows", err)
+	}
+
+	var sessionCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions")
+	if err := row.Scan(&sessionCount); err != nil {
+		t.Fatalf("query sessions: %v", err)
+	}
+	if sessionCount != 0 {
+		t.Fatalf("cross-user key CreateSession inserted sessions=%d, want 0", sessionCount)
 	}
 }
 
