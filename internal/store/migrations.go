@@ -422,4 +422,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 17,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_remote_addr_insert_valid
+BEFORE INSERT ON sessions
+WHEN trim(NEW.remote_addr, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.remote_addr != trim(NEW.remote_addr, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'session remote address must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_remote_addr_update_valid
+BEFORE UPDATE OF remote_addr ON sessions
+WHEN trim(NEW.remote_addr, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.remote_addr != trim(NEW.remote_addr, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'session remote address must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }

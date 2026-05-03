@@ -137,6 +137,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 16 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 17")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 17: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 17 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -375,6 +382,60 @@ VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2
 	}
 	if gotStartedAt != validOffsetTime {
 		t.Fatalf("session started_at = %q, want %q", gotStartedAt, validOffsetTime)
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionRemoteAddressValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name       string
+		sessionID  string
+		remoteAddr string
+	}{
+		{name: "blank remote address", sessionID: "bad-blank-remote-address", remoteAddr: " \t "},
+		{name: "padded remote address", sessionID: "bad-padded-remote-address", remoteAddr: " 127.0.0.1:2222 "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, tt.sessionID, userID, testKeyFingerprint, tt.remoteAddr, now(), "active"); err == nil {
+				t.Fatalf("inserted session with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	remoteAddr := "127.0.0.1:2222"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, remoteAddr, now(), "active"); err != nil {
+		t.Fatalf("insert valid session: %v", err)
+	}
+	for _, tt := range []struct {
+		name       string
+		remoteAddr string
+	}{
+		{name: "blank remote address", remoteAddr: "\n\t"},
+		{name: "padded remote address", remoteAddr: "\t127.0.0.1:2223\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET remote_addr = ? WHERE id = ?", tt.remoteAddr, "session-1"); err == nil {
+				t.Fatalf("updated session to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotRemoteAddr string
+	row := st.db.QueryRowContext(ctx, "SELECT remote_addr FROM sessions WHERE id = ?", "session-1")
+	if err := row.Scan(&gotRemoteAddr); err != nil {
+		t.Fatalf("query session remote_addr: %v", err)
+	}
+	if gotRemoteAddr != remoteAddr {
+		t.Fatalf("session remote_addr = %q, want %q", gotRemoteAddr, remoteAddr)
 	}
 }
 
