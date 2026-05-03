@@ -175,6 +175,58 @@ func TestCreateSessionRequiresExistingUserAndKey(t *testing.T) {
 	}
 }
 
+func TestEnsureUserAndKeyRejectsBlankInputs(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	tests := []struct {
+		name        string
+		username    string
+		fingerprint string
+		publicKey   string
+	}{
+		{
+			name:        "blank username",
+			username:    " \t ",
+			fingerprint: "SHA256:test",
+			publicKey:   "ssh-ed25519 AAAA alice",
+		},
+		{
+			name:        "blank fingerprint",
+			username:    "alice",
+			fingerprint: " \t ",
+			publicKey:   "ssh-ed25519 AAAA alice",
+		},
+		{
+			name:        "blank public key",
+			username:    "alice",
+			fingerprint: "SHA256:test",
+			publicKey:   " \t ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := st.EnsureUserAndKey(ctx, tt.username, tt.fingerprint, tt.publicKey); err == nil {
+				t.Fatalf("EnsureUserAndKey accepted %s", tt.name)
+			}
+		})
+	}
+
+	var userCount, keyCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users")
+	if err := row.Scan(&userCount); err != nil {
+		t.Fatalf("query users: %v", err)
+	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM keys")
+	if err := row.Scan(&keyCount); err != nil {
+		t.Fatalf("query keys: %v", err)
+	}
+	if userCount != 0 || keyCount != 0 {
+		t.Fatalf("blank EnsureUserAndKey inserted users=%d keys=%d, want 0/0", userCount, keyCount)
+	}
+}
+
 func TestLifecycleUpdatesRequireExistingRecords(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -243,6 +295,24 @@ func TestAuditRequiresValidJSON(t *testing.T) {
 
 	if err := st.Audit(ctx, "good.audit", `{"ok":true}`); err != nil {
 		t.Fatalf("Audit valid JSON: %v", err)
+	}
+}
+
+func TestAuditRejectsBlankEventType(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if err := st.Audit(ctx, " \t ", `{"ok":true}`); err == nil {
+		t.Fatalf("Audit accepted blank event type")
+	}
+
+	var auditCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_events")
+	if err := row.Scan(&auditCount); err != nil {
+		t.Fatalf("query audit_events: %v", err)
+	}
+	if auditCount != 0 {
+		t.Fatalf("blank audit event count = %d, want 0", auditCount)
 	}
 }
 

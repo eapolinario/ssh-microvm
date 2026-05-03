@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -99,6 +100,15 @@ func (s *Store) HasKey(ctx context.Context, fingerprint string) (bool, error) {
 }
 
 func (s *Store) EnsureUserAndKey(ctx context.Context, username, fingerprint, publicKey string) (string, error) {
+	if isBlank(username) {
+		return "", errors.New("username must be set")
+	}
+	if isBlank(fingerprint) {
+		return "", errors.New("key fingerprint must be set")
+	}
+	if isBlank(publicKey) {
+		return "", errors.New("public key must be set")
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", err
@@ -171,6 +181,9 @@ func (s *Store) EndVM(ctx context.Context, vmID string, exitStatus int) error {
 }
 
 func (s *Store) Audit(ctx context.Context, eventType, dataJSON string) error {
+	if isBlank(eventType) {
+		return errors.New("audit event type must be set")
+	}
 	if !json.Valid([]byte(dataJSON)) {
 		return errors.New("audit data must be valid JSON")
 	}
@@ -181,6 +194,10 @@ VALUES(?, ?, ?, ?)`, newID(), eventType, dataJSON, now())
 
 func now() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
+}
+
+func isBlank(value string) bool {
+	return strings.TrimSpace(value) == ""
 }
 
 type execer interface {
