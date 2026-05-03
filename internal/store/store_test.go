@@ -54,6 +54,21 @@ func TestStoreUsesSingleConnectionForConnectionScopedPragmas(t *testing.T) {
 	}
 }
 
+func TestNewRejectsBlankPath(t *testing.T) {
+	for _, path := range []string{"", " \t\n"} {
+		st, err := New(path)
+		if err == nil {
+			if st != nil {
+				_ = st.Close()
+			}
+			t.Fatalf("New(%q) error = nil, want validation error", path)
+		}
+		if st != nil {
+			t.Fatalf("New(%q) store = %#v, want nil", path, st)
+		}
+	}
+}
+
 func TestStoreUserSessionAndVMLifecycle(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()

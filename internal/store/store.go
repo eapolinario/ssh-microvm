@@ -17,6 +17,9 @@ type Store struct {
 }
 
 func New(path string) (*Store, error) {
+	if isBlank(path) {
+		return nil, errors.New("database path must be set")
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
