@@ -109,6 +109,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 12 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 13")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 13: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 13 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -119,6 +126,71 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("table %s count = %d, want 1", table, count)
 		}
+	}
+}
+
+func TestEnsureSchemaEnforcesVMStartTimeValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: testKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		vmID      string
+		startedAt string
+	}{
+		{name: "blank start time", vmID: "bad-blank-start-time", startedAt: " \t "},
+		{name: "padded start time", vmID: "bad-padded-start-time", startedAt: " " + now() + " "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, tt.vmID, session.ID, filepath.Join(t.TempDir(), tt.vmID), 1234, tt.startedAt); err == nil {
+				t.Fatalf("inserted VM with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	startedAt := now()
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 1234, startedAt); err != nil {
+		t.Fatalf("insert valid VM: %v", err)
+	}
+	for _, tt := range []struct {
+		name      string
+		startedAt string
+	}{
+		{name: "blank start time", startedAt: "\n\t"},
+		{name: "padded start time", startedAt: "\t" + now() + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE vms SET started_at = ? WHERE id = ?", tt.startedAt, "vm-1"); err == nil {
+				t.Fatalf("updated VM to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotStartedAt string
+	row := st.db.QueryRowContext(ctx, "SELECT started_at FROM vms WHERE id = ?", "vm-1")
+	if err := row.Scan(&gotStartedAt); err != nil {
+		t.Fatalf("query VM started_at: %v", err)
+	}
+	if gotStartedAt != startedAt {
+		t.Fatalf("VM started_at = %q, want %q", gotStartedAt, startedAt)
 	}
 }
 
