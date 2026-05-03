@@ -543,6 +543,49 @@ func TestParseSSHRequestPayloadsRejectInvalidData(t *testing.T) {
 	if _, ok := parseExecRequest(invalid); ok {
 		t.Fatalf("parseExecRequest accepted invalid payload")
 	}
+	for _, tt := range []struct {
+		name    string
+		term    string
+		columns uint32
+		rows    uint32
+	}{
+		{name: "blank term", term: " \t ", columns: 120, rows: 40},
+		{name: "zero columns", term: "xterm-256color", rows: 40},
+		{name: "zero rows", term: "xterm-256color", columns: 120},
+	} {
+		payload := ssh.Marshal(struct {
+			Term          string
+			Columns, Rows uint32
+			Width, Height uint32
+			TerminalModes []byte
+		}{
+			Term:    tt.term,
+			Columns: tt.columns,
+			Rows:    tt.rows,
+		})
+		if _, ok := parsePtyRequest(payload); ok {
+			t.Fatalf("parsePtyRequest accepted invalid %s payload", tt.name)
+		}
+	}
+	for _, tt := range []struct {
+		name    string
+		columns uint32
+		rows    uint32
+	}{
+		{name: "zero columns", rows: 33},
+		{name: "zero rows", columns: 100},
+	} {
+		payload := ssh.Marshal(struct {
+			Columns, Rows uint32
+			Width, Height uint32
+		}{
+			Columns: tt.columns,
+			Rows:    tt.rows,
+		})
+		if _, ok := parseWindowChange(payload); ok {
+			t.Fatalf("parseWindowChange accepted invalid %s payload", tt.name)
+		}
+	}
 	for _, command := range []string{"", " \t "} {
 		payload := ssh.Marshal(struct {
 			Command string

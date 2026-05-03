@@ -457,6 +457,9 @@ func parsePtyRequest(payload []byte) (ptyRequest, bool) {
 	if err := ssh.Unmarshal(payload, &req); err != nil {
 		return ptyRequest{}, false
 	}
+	if strings.TrimSpace(req.Term) == "" || req.Columns == 0 || req.Rows == 0 {
+		return ptyRequest{}, false
+	}
 	return ptyRequest{
 		Term:   req.Term,
 		Width:  int(req.Columns),
@@ -470,6 +473,9 @@ func parseWindowChange(payload []byte) (windowChange, bool) {
 		Width, Height uint32
 	}
 	if err := ssh.Unmarshal(payload, &req); err != nil {
+		return windowChange{}, false
+	}
+	if req.Columns == 0 || req.Rows == 0 {
 		return windowChange{}, false
 	}
 	return windowChange{
