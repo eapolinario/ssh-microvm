@@ -924,6 +924,43 @@ func TestEnsureUserAndKeyRejectsFingerprintMismatch(t *testing.T) {
 	}
 }
 
+func TestEnsureUserAndKeyRejectsExistingFingerprintForDifferentUser(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	aliceID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey alice: %v", err)
+	}
+
+	bobID, err := st.EnsureUserAndKey(ctx, "bob", testKeyFingerprint, testAuthorizedKey)
+	if err == nil {
+		t.Fatalf("EnsureUserAndKey reassigned existing fingerprint to bob, bobID=%q", bobID)
+	}
+	if !strings.Contains(err.Error(), "key fingerprint is already enrolled for another user") {
+		t.Fatalf("EnsureUserAndKey error = %q, want existing fingerprint ownership error", err)
+	}
+
+	var (
+		keyUserID string
+		userCount int
+	)
+	row := st.db.QueryRowContext(ctx, "SELECT user_id FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&keyUserID); err != nil {
+		t.Fatalf("query key owner: %v", err)
+	}
+	if keyUserID != aliceID {
+		t.Fatalf("key user_id = %q, want original alice user ID %q", keyUserID, aliceID)
+	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users")
+	if err := row.Scan(&userCount); err != nil {
+		t.Fatalf("query users: %v", err)
+	}
+	if userCount != 1 {
+		t.Fatalf("rejected cross-user key enrollment persisted users=%d, want 1", userCount)
+	}
+}
+
 func TestHasKeyRejectsBlankFingerprint(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()

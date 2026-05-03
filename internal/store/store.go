@@ -190,13 +190,23 @@ func (s *Store) ensureUserTx(ctx context.Context, tx *sql.Tx, username string) (
 }
 
 func (s *Store) upsertKeyTx(ctx context.Context, tx *sql.Tx, userID, fingerprint, publicKey string) error {
-	_, err := tx.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+	result, err := tx.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
 VALUES(?, ?, ?, ?, ?)
 ON CONFLICT(fingerprint) DO UPDATE SET
-	user_id=excluded.user_id,
 	public_key=excluded.public_key,
-	last_seen_at=excluded.last_seen_at`, fingerprint, userID, publicKey, now(), now())
-	return err
+	last_seen_at=excluded.last_seen_at
+WHERE keys.user_id = excluded.user_id`, fingerprint, userID, publicKey, now(), now())
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return errors.New("key fingerprint is already enrolled for another user")
+	}
+	return nil
 }
 
 func (s *Store) CreateSession(ctx context.Context, session Session) error {
