@@ -147,6 +147,21 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			args:    requiredArgs("--host-ip", ""),
 			wantErr: "--guest-ip and --host-ip must be set",
 		},
+		{
+			name:    "invalid guest ip",
+			args:    requiredArgs("--guest-ip", "not-an-ip"),
+			wantErr: "--guest-ip must be a valid IPv4 address: not-an-ip",
+		},
+		{
+			name:    "invalid host ip",
+			args:    requiredArgs("--host-ip", "999.0.0.1"),
+			wantErr: "--host-ip must be a valid IPv4 address: 999.0.0.1",
+		},
+		{
+			name:    "ipv6 guest ip",
+			args:    requiredArgs("--guest-ip", "2001:db8::2"),
+			wantErr: "--guest-ip must be a valid IPv4 address: 2001:db8::2",
+		},
 	}
 
 	for _, tt := range tests {

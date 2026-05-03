@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -107,6 +108,17 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if cfg.GuestIP == "" || cfg.HostIP == "" {
 		return nil, errors.New("--guest-ip and --host-ip must be set")
 	}
+	if !isIPv4(cfg.GuestIP) {
+		return nil, fmt.Errorf("--guest-ip must be a valid IPv4 address: %s", cfg.GuestIP)
+	}
+	if !isIPv4(cfg.HostIP) {
+		return nil, fmt.Errorf("--host-ip must be a valid IPv4 address: %s", cfg.HostIP)
+	}
 
 	return cfg, nil
+}
+
+func isIPv4(value string) bool {
+	ip := net.ParseIP(value)
+	return ip != nil && ip.To4() != nil
 }
