@@ -180,6 +180,86 @@ func TestServeListenerRejectsNilDependencies(t *testing.T) {
 	}
 }
 
+func TestHandleConnRejectsInvalidState(t *testing.T) {
+	readyServer := newReadyTestServer(t)
+	cfg := &config.Config{ListenAddr: "127.0.0.1:0"}
+	st := newTestStore(t)
+	manager := firecracker.NewManager(cfg)
+	signer := newTestSigner(t)
+
+	tests := []struct {
+		name       string
+		server     *Server
+		ctx        context.Context
+		conn       net.Conn
+		wantClosed bool
+	}{
+		{
+			name:       "nil server",
+			ctx:        context.Background(),
+			conn:       &testNetConn{},
+			wantClosed: true,
+		},
+		{
+			name:       "nil context",
+			server:     &Server{cfg: cfg, store: st, manager: manager, hostSigner: signer},
+			conn:       &testNetConn{},
+			wantClosed: true,
+		},
+		{
+			name:       "nil config",
+			server:     &Server{store: st, manager: manager, hostSigner: signer},
+			ctx:        context.Background(),
+			conn:       &testNetConn{},
+			wantClosed: true,
+		},
+		{
+			name:       "nil store",
+			server:     &Server{cfg: cfg, manager: manager, hostSigner: signer},
+			ctx:        context.Background(),
+			conn:       &testNetConn{},
+			wantClosed: true,
+		},
+		{
+			name:       "nil manager",
+			server:     &Server{cfg: cfg, store: st, hostSigner: signer},
+			ctx:        context.Background(),
+			conn:       &testNetConn{},
+			wantClosed: true,
+		},
+		{
+			name:       "nil host signer",
+			server:     &Server{cfg: cfg, store: st, manager: manager},
+			ctx:        context.Background(),
+			conn:       &testNetConn{},
+			wantClosed: true,
+		},
+		{
+			name:   "nil network connection",
+			server: readyServer,
+			ctx:    context.Background(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.server.handleConn(tt.ctx, tt.conn)
+
+			testConn, ok := tt.conn.(*testNetConn)
+			if tt.wantClosed {
+				if !ok {
+					t.Fatalf("test connection has type %T, want *testNetConn", tt.conn)
+				}
+				if !testConn.closed {
+					t.Fatalf("handleConn did not close invalid connection")
+				}
+			} else if ok && testConn.closed {
+				t.Fatalf("handleConn closed connection unexpectedly")
+			}
+		})
+	}
+}
+
 func TestNewRejectsNilDependencies(t *testing.T) {
 	cfg := &config.Config{HostKeyPath: filepath.Join(t.TempDir(), "ssh_host_ed25519")}
 	st := newTestStore(t)
@@ -771,4 +851,51 @@ func (c *testSSHChannel) SendRequest(name string, wantReply bool, payload []byte
 
 func (c *testSSHChannel) Stderr() io.ReadWriter {
 	return &bytes.Buffer{}
+}
+
+type testNetConn struct {
+	closed bool
+}
+
+func (c *testNetConn) Read(_ []byte) (int, error) {
+	return 0, io.EOF
+}
+
+func (c *testNetConn) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func (c *testNetConn) Close() error {
+	c.closed = true
+	return nil
+}
+
+func (c *testNetConn) LocalAddr() net.Addr {
+	return testAddr("local")
+}
+
+func (c *testNetConn) RemoteAddr() net.Addr {
+	return testAddr("remote")
+}
+
+func (c *testNetConn) SetDeadline(_ time.Time) error {
+	return nil
+}
+
+func (c *testNetConn) SetReadDeadline(_ time.Time) error {
+	return nil
+}
+
+func (c *testNetConn) SetWriteDeadline(_ time.Time) error {
+	return nil
+}
+
+type testAddr string
+
+func (a testAddr) Network() string {
+	return string(a)
+}
+
+func (a testAddr) String() string {
+	return string(a)
 }

@@ -111,6 +111,18 @@ func (s *Server) validateServe(ctx context.Context) error {
 }
 
 func (s *Server) handleConn(ctx context.Context, netConn net.Conn) {
+	if err := s.validateServe(ctx); err != nil {
+		if netConn != nil {
+			_ = netConn.Close()
+		}
+		log.Printf("ssh connection rejected: %v", err)
+		return
+	}
+	if netConn == nil {
+		log.Printf("ssh connection rejected: network connection must be set")
+		return
+	}
+
 	serverCfg := &ssh.ServerConfig{
 		PublicKeyCallback: s.publicKeyCallback,
 	}
