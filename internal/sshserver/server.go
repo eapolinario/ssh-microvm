@@ -442,6 +442,12 @@ func loadOrCreateHostKey(path string) (ssh.Signer, error) {
 }
 
 func ensureHostKeyDir(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("host key directory must be set")
+	}
+	if path != strings.TrimSpace(path) {
+		return errors.New("host key directory must not contain surrounding whitespace")
+	}
 	if err := os.MkdirAll(path, 0o700); err != nil {
 		return err
 	}

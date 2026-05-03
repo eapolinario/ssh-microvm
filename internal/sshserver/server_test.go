@@ -448,6 +448,45 @@ func TestLoadOrCreateHostKeyRejectsPathWithSurroundingWhitespaceBeforeSideEffect
 	}
 }
 
+func TestEnsureHostKeyDirRejectsInvalidPathsBeforeSideEffects(t *testing.T) {
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	tests := []struct {
+		name    string
+		path    string
+		wantErr string
+	}{
+		{
+			name:    "blank path",
+			path:    " \t ",
+			wantErr: "host key directory must be set",
+		},
+		{
+			name:    "surrounding whitespace",
+			path:    " ssh ",
+			wantErr: "host key directory must not contain surrounding whitespace",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ensureHostKeyDir(tt.path)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("ensureHostKeyDir error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+
+	entries, err := os.ReadDir(workDir)
+	if err != nil {
+		t.Fatalf("read work dir: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("ensureHostKeyDir created filesystem entries before validating path: %v", entries)
+	}
+}
+
 func TestPublicKeyCallbackAuthModes(t *testing.T) {
 	signer := newTestSigner(t)
 	key := signer.PublicKey()
