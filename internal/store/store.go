@@ -145,8 +145,12 @@ func (s *Store) EnsureUserAndKey(ctx context.Context, username, fingerprint, pub
 	if hasSurroundingWhitespace(publicKey) {
 		return "", errors.New("public key must not contain surrounding whitespace")
 	}
-	if err := validateAuthorizedKey(publicKey); err != nil {
+	key, err := parseAuthorizedKey(publicKey)
+	if err != nil {
 		return "", err
+	}
+	if got := ssh.FingerprintSHA256(key); got != fingerprint {
+		return "", errors.New("key fingerprint must match public key")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -405,15 +409,15 @@ func validateTCPAddr(label, value string) error {
 	return nil
 }
 
-func validateAuthorizedKey(value string) error {
-	_, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(value))
+func parseAuthorizedKey(value string) (ssh.PublicKey, error) {
+	key, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(value))
 	if err != nil {
-		return errors.New("public key must be a valid authorized key")
+		return nil, errors.New("public key must be a valid authorized key")
 	}
 	if len(rest) != 0 {
-		return errors.New("public key must contain exactly one authorized key")
+		return nil, errors.New("public key must contain exactly one authorized key")
 	}
-	return nil
+	return key, nil
 }
 
 func (s *Store) validate(ctx context.Context) error {

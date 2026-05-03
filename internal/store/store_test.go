@@ -9,7 +9,10 @@ import (
 	"testing"
 )
 
-const testAuthorizedKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPh2vDLbN/0Bu93v5NvdlRQ7WOpknAUgJ0l1ofhOYTpf"
+const (
+	testAuthorizedKey  = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPh2vDLbN/0Bu93v5NvdlRQ7WOpknAUgJ0l1ofhOYTpf"
+	testKeyFingerprint = "SHA256:UecLtXI8mKCwPSeFNoPFanZ4gYYgIREcsLQBav+pqAg"
+)
 
 func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	st := newTestStore(t)
@@ -104,7 +107,7 @@ func TestStoreAPIsRejectNilStore(t *testing.T) {
 	validSession := Session{
 		ID:             "session-1",
 		UserID:         "user-1",
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -135,14 +138,14 @@ func TestStoreAPIsRejectNilStore(t *testing.T) {
 		{
 			name: "HasKey",
 			run: func(st *Store) error {
-				_, err := st.HasKey(ctx, "SHA256:test")
+				_, err := st.HasKey(ctx, testKeyFingerprint)
 				return err
 			},
 		},
 		{
 			name: "EnsureUserAndKey",
 			run: func(st *Store) error {
-				_, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+				_, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 				return err
 			},
 		},
@@ -208,7 +211,7 @@ func TestStoreAPIsRejectNilContext(t *testing.T) {
 	validSession := Session{
 		ID:             "session-1",
 		UserID:         "user-1",
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -233,14 +236,14 @@ func TestStoreAPIsRejectNilContext(t *testing.T) {
 		{
 			name: "HasKey",
 			run: func() error {
-				_, err := st.HasKey(nil, "SHA256:test")
+				_, err := st.HasKey(nil, testKeyFingerprint)
 				return err
 			},
 		},
 		{
 			name: "EnsureUserAndKey",
 			run: func() error {
-				_, err := st.EnsureUserAndKey(nil, "alice", "SHA256:test", testAuthorizedKey)
+				_, err := st.EnsureUserAndKey(nil, "alice", testKeyFingerprint, testAuthorizedKey)
 				return err
 			},
 		},
@@ -295,7 +298,7 @@ func TestStoreUserSessionAndVMLifecycle(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -303,7 +306,7 @@ func TestStoreUserSessionAndVMLifecycle(t *testing.T) {
 		t.Fatalf("EnsureUserAndKey returned empty user ID")
 	}
 
-	userIDAgain, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userIDAgain, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("second EnsureUserAndKey: %v", err)
 	}
@@ -311,7 +314,7 @@ func TestStoreUserSessionAndVMLifecycle(t *testing.T) {
 		t.Fatalf("second EnsureUserAndKey user ID = %q, want %q", userIDAgain, userID)
 	}
 
-	hasKey, err := st.HasKey(ctx, "SHA256:test")
+	hasKey, err := st.HasKey(ctx, testKeyFingerprint)
 	if err != nil {
 		t.Fatalf("HasKey: %v", err)
 	}
@@ -322,7 +325,7 @@ func TestStoreUserSessionAndVMLifecycle(t *testing.T) {
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -416,7 +419,7 @@ func TestCreateSessionRejectsBlankFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -424,7 +427,7 @@ func TestCreateSessionRejectsBlankFields(t *testing.T) {
 	valid := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -495,7 +498,7 @@ func TestCreateSessionRejectsWhitespacePaddedFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -503,7 +506,7 @@ func TestCreateSessionRejectsWhitespacePaddedFields(t *testing.T) {
 	valid := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -576,7 +579,7 @@ func TestCreateSessionRejectsInvalidStartTime(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -584,7 +587,7 @@ func TestCreateSessionRejectsInvalidStartTime(t *testing.T) {
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      "2026-05-03 14:03:32",
 		Status:         "active",
@@ -611,7 +614,7 @@ func TestCreateSessionRejectsInvalidRemoteAddr(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -619,7 +622,7 @@ func TestCreateSessionRejectsInvalidRemoteAddr(t *testing.T) {
 	valid := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -675,7 +678,7 @@ func TestCreateSessionRejectsUnsupportedStatus(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -683,7 +686,7 @@ func TestCreateSessionRejectsUnsupportedStatus(t *testing.T) {
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "closed",
@@ -719,7 +722,7 @@ func TestEnsureUserAndKeyRejectsBlankInputs(t *testing.T) {
 		{
 			name:        "blank username",
 			username:    " \t ",
-			fingerprint: "SHA256:test",
+			fingerprint: testKeyFingerprint,
 			publicKey:   testAuthorizedKey,
 		},
 		{
@@ -731,7 +734,7 @@ func TestEnsureUserAndKeyRejectsBlankInputs(t *testing.T) {
 		{
 			name:        "blank public key",
 			username:    "alice",
-			fingerprint: "SHA256:test",
+			fingerprint: testKeyFingerprint,
 			publicKey:   " \t ",
 		},
 	}
@@ -771,17 +774,17 @@ func TestEnsureUserAndKeyRejectsWhitespacePaddedMetadata(t *testing.T) {
 		{
 			name:        "padded username",
 			username:    " alice ",
-			fingerprint: "SHA256:test",
+			fingerprint: testKeyFingerprint,
 		},
 		{
 			name:        "padded fingerprint",
 			username:    "alice",
-			fingerprint: " SHA256:test ",
+			fingerprint: " " + testKeyFingerprint + " ",
 		},
 		{
 			name:        "padded public key",
 			username:    "alice",
-			fingerprint: "SHA256:test",
+			fingerprint: testKeyFingerprint,
 			publicKey:   " " + testAuthorizedKey + "\n",
 		},
 	}
@@ -835,7 +838,7 @@ func TestEnsureUserAndKeyRejectsInvalidPublicKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", tt.publicKey)
+			_, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, tt.publicKey)
 			if err == nil {
 				t.Fatalf("EnsureUserAndKey accepted %s", tt.name)
 			}
@@ -859,6 +862,32 @@ func TestEnsureUserAndKeyRejectsInvalidPublicKey(t *testing.T) {
 	}
 }
 
+func TestEnsureUserAndKeyRejectsFingerprintMismatch(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	_, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:mismatch", testAuthorizedKey)
+	if err == nil {
+		t.Fatalf("EnsureUserAndKey accepted mismatched fingerprint")
+	}
+	if !strings.Contains(err.Error(), "key fingerprint must match public key") {
+		t.Fatalf("EnsureUserAndKey error = %q, want fingerprint mismatch", err)
+	}
+
+	var userCount, keyCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users")
+	if err := row.Scan(&userCount); err != nil {
+		t.Fatalf("query users: %v", err)
+	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM keys")
+	if err := row.Scan(&keyCount); err != nil {
+		t.Fatalf("query keys: %v", err)
+	}
+	if userCount != 0 || keyCount != 0 {
+		t.Fatalf("fingerprint mismatch inserted users=%d keys=%d, want 0/0", userCount, keyCount)
+	}
+}
+
 func TestHasKeyRejectsBlankFingerprint(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -876,11 +905,11 @@ func TestHasKeyRejectsWhitespacePaddedFingerprint(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	if _, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey); err != nil {
+	if _, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey); err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 
-	hasKey, err := st.HasKey(ctx, " SHA256:test ")
+	hasKey, err := st.HasKey(ctx, " "+testKeyFingerprint+" ")
 	if err == nil {
 		t.Fatalf("HasKey accepted a whitespace-padded fingerprint")
 	}
@@ -908,14 +937,14 @@ func TestLifecycleUpdatesRejectBlankInputs(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1012,14 +1041,14 @@ func TestLifecycleUpdatesRejectWhitespacePaddedInputs(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1116,14 +1145,14 @@ func TestEndVMRejectsNegativeExitStatus(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1170,14 +1199,14 @@ func TestEndVMRejectsAlreadyEndedVM(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1224,14 +1253,14 @@ func TestEndSessionRejectsUnsupportedTerminalStatus(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1268,14 +1297,14 @@ func TestEndSessionRejectsAlreadyEndedSession(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1312,14 +1341,14 @@ func TestAttachVMRequiresExistingVM(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1346,7 +1375,7 @@ func TestAttachVMRequiresVMForSameSession(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1354,7 +1383,7 @@ func TestAttachVMRequiresVMForSameSession(t *testing.T) {
 		{
 			ID:             "session-1",
 			UserID:         userID,
-			KeyFingerprint: "SHA256:test",
+			KeyFingerprint: testKeyFingerprint,
 			RemoteAddr:     "127.0.0.1:2222",
 			StartedAt:      now(),
 			Status:         "active",
@@ -1362,7 +1391,7 @@ func TestAttachVMRequiresVMForSameSession(t *testing.T) {
 		{
 			ID:             "session-2",
 			UserID:         userID,
-			KeyFingerprint: "SHA256:test",
+			KeyFingerprint: testKeyFingerprint,
 			RemoteAddr:     "127.0.0.1:2223",
 			StartedAt:      now(),
 			Status:         "active",
@@ -1404,14 +1433,14 @@ func TestAttachVMRejectsAlreadyAttachedSession(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1464,14 +1493,14 @@ func TestAttachVMRejectsEndedSession(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1522,14 +1551,14 @@ func TestCreateVMRejectsEndedSession(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1567,14 +1596,14 @@ func TestCreateVMRejectsBlankFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1644,14 +1673,14 @@ func TestCreateVMRejectsWhitespacePaddedFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1723,14 +1752,14 @@ func TestCreateVMRejectsInvalidStartTime(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
@@ -1768,14 +1797,14 @@ func TestCreateVMRejectsNonPositiveFirecrackerPID(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 	session := Session{
 		ID:             "session-1",
 		UserID:         userID,
-		KeyFingerprint: "SHA256:test",
+		KeyFingerprint: testKeyFingerprint,
 		RemoteAddr:     "127.0.0.1:2222",
 		StartedAt:      now(),
 		Status:         "active",
