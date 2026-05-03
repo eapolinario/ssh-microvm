@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -217,6 +218,9 @@ func (s *Store) CreateSession(ctx context.Context, session Session) error {
 	if hasSurroundingWhitespace(session.RemoteAddr) {
 		return errors.New("session remote address must not contain surrounding whitespace")
 	}
+	if err := validateTCPAddr("session remote address", session.RemoteAddr); err != nil {
+		return err
+	}
 	if isBlank(session.StartedAt) {
 		return errors.New("session start time must be set")
 	}
@@ -375,6 +379,23 @@ func hasSurroundingWhitespace(value string) bool {
 func validateTimestamp(label, value string) error {
 	if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
 		return fmt.Errorf("%s must be a valid RFC3339 timestamp", label)
+	}
+	return nil
+}
+
+func validateTCPAddr(label, value string) error {
+	_, port, err := net.SplitHostPort(value)
+	if err != nil {
+		return fmt.Errorf("%s must be a valid TCP address", label)
+	}
+	if port == "" {
+		return fmt.Errorf("%s port must be set", label)
+	}
+	if _, err := net.LookupPort("tcp", port); err != nil {
+		return fmt.Errorf("%s port must be valid", label)
+	}
+	if _, err := net.ResolveTCPAddr("tcp", value); err != nil {
+		return fmt.Errorf("%s must resolve to a valid TCP address", label)
 	}
 	return nil
 }

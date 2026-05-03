@@ -605,6 +605,70 @@ func TestCreateSessionRejectsInvalidStartTime(t *testing.T) {
 	}
 }
 
+func TestCreateSessionRejectsInvalidRemoteAddr(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	valid := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	tests := []struct {
+		name       string
+		remoteAddr string
+		wantErr    string
+	}{
+		{
+			name:       "missing port",
+			remoteAddr: "127.0.0.1",
+			wantErr:    "session remote address must be a valid TCP address",
+		},
+		{
+			name:       "invalid port",
+			remoteAddr: "127.0.0.1:not-a-port",
+			wantErr:    "session remote address port must be valid",
+		},
+		{
+			name:       "unresolvable address",
+			remoteAddr: "999.0.0.1:2222",
+			wantErr:    "session remote address must resolve to a valid TCP address",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			session := valid
+			session.ID = tt.name
+			session.RemoteAddr = tt.remoteAddr
+			err := st.CreateSession(ctx, session)
+			if err == nil {
+				t.Fatalf("CreateSession accepted invalid remote address %q", tt.remoteAddr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("CreateSession error = %q, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+
+	var sessionCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions")
+	if err := row.Scan(&sessionCount); err != nil {
+		t.Fatalf("query sessions: %v", err)
+	}
+	if sessionCount != 0 {
+		t.Fatalf("invalid remote address CreateSession inserted sessions=%d, want 0", sessionCount)
+	}
+}
+
 func TestCreateSessionRejectsUnsupportedStatus(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
