@@ -594,6 +594,9 @@ func (s *Server) validateGuestDial(guestIP string) error {
 	if strings.TrimSpace(guestIP) == "" {
 		return errors.New("guest IP must be set")
 	}
+	if !isIPv4(guestIP) {
+		return fmt.Errorf("guest IP must be a valid IPv4 address: %s", guestIP)
+	}
 	if strings.TrimSpace(s.cfg.GuestUser) == "" {
 		return errors.New("guest user must be set")
 	}
@@ -628,6 +631,12 @@ func waitForPort(addr string, timeout time.Duration) error {
 	return waitForPortWithDial(addr, timeout, func(addr string, timeout time.Duration) (net.Conn, error) {
 		return net.DialTimeout("tcp", addr, timeout)
 	})
+}
+
+func isIPv4(value string) bool {
+	ip := net.ParseIP(value)
+	ipv4 := ip.To4()
+	return ipv4 != nil && value == ipv4.String()
 }
 
 func waitForPortWithDial(addr string, timeout time.Duration, dial func(string, time.Duration) (net.Conn, error)) error {

@@ -676,6 +676,24 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			wantErr: "guest IP must be set",
 		},
 		{
+			name:    "invalid guest IP",
+			server:  validServer,
+			channel: validChannel,
+			winCh:   validWinCh,
+			shell:   true,
+			vm:      &firecracker.VM{GuestIP: "not-an-ip"},
+			wantErr: "guest IP must be a valid IPv4 address",
+		},
+		{
+			name:    "non-canonical guest IP",
+			server:  validServer,
+			channel: validChannel,
+			winCh:   validWinCh,
+			shell:   true,
+			vm:      &firecracker.VM{GuestIP: " 127.0.0.1 "},
+			wantErr: "guest IP must be a valid IPv4 address",
+		},
+		{
 			name:    "blank guest user",
 			server:  &Server{cfg: &config.Config{GuestUser: " \t ", GuestKeyPath: "/keys/guest"}},
 			channel: validChannel,
@@ -875,6 +893,18 @@ func TestDialGuestRejectsInvalidState(t *testing.T) {
 			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: "/keys/guest"}},
 			guestIP: " \t ",
 			wantErr: "guest IP must be set",
+		},
+		{
+			name:    "invalid guest IP",
+			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: "/keys/guest"}},
+			guestIP: "not-an-ip",
+			wantErr: "guest IP must be a valid IPv4 address",
+		},
+		{
+			name:    "non-canonical guest IP",
+			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: "/keys/guest"}},
+			guestIP: " 127.0.0.1 ",
+			wantErr: "guest IP must be a valid IPv4 address",
 		},
 		{
 			name:    "blank guest user",
