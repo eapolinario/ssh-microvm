@@ -110,6 +110,9 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if hasSurroundingWhitespace(cfg.RootFS) {
 		return nil, errors.New("--rootfs must not contain surrounding whitespace")
 	}
+	if isBlank(cfg.AuthMode) {
+		return nil, errors.New("--auth-mode must be set")
+	}
 	if hasSurroundingWhitespace(cfg.AuthMode) {
 		return nil, errors.New("--auth-mode must not contain surrounding whitespace")
 	}

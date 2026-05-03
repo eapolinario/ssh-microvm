@@ -257,6 +257,16 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			wantErr: "--state-dir must be set",
 		},
 		{
+			name:    "missing auth mode",
+			args:    requiredArgs("--auth-mode", ""),
+			wantErr: "--auth-mode must be set",
+		},
+		{
+			name:    "blank auth mode",
+			args:    requiredArgs("--auth-mode", " \t "),
+			wantErr: "--auth-mode must be set",
+		},
+		{
 			name:    "invalid auth mode",
 			args:    requiredArgs("--auth-mode", "invalid"),
 			wantErr: "invalid --auth-mode: invalid",
