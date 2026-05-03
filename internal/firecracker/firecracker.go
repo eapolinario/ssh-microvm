@@ -183,6 +183,12 @@ func validateStartConfig(cfg *config.Config) error {
 	if strings.TrimSpace(cfg.HostIP) == "" {
 		return errors.New("host IP must be set")
 	}
+	if cfg.GuestIP != strings.TrimSpace(cfg.GuestIP) {
+		return errors.New("guest IP must not contain surrounding whitespace")
+	}
+	if cfg.HostIP != strings.TrimSpace(cfg.HostIP) {
+		return errors.New("host IP must not contain surrounding whitespace")
+	}
 	if !isIPv4(cfg.GuestIP) {
 		return fmt.Errorf("guest IP must be a valid IPv4 address: %s", cfg.GuestIP)
 	}

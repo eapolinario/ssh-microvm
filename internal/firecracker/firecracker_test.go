@@ -293,7 +293,7 @@ func TestManagerStartRejectsInvalidConfigBeforeSideEffects(t *testing.T) {
 			mutate: func(cfg *config.Config) {
 				cfg.GuestIP = " 172.16.0.2 "
 			},
-			wantErr: "guest IP must be a valid IPv4 address",
+			wantErr: "guest IP must not contain surrounding whitespace",
 		},
 		{
 			name: "invalid host ip",
@@ -307,7 +307,7 @@ func TestManagerStartRejectsInvalidConfigBeforeSideEffects(t *testing.T) {
 			mutate: func(cfg *config.Config) {
 				cfg.HostIP = " 172.16.0.1 "
 			},
-			wantErr: "host IP must be a valid IPv4 address",
+			wantErr: "host IP must not contain surrounding whitespace",
 		},
 		{
 			name: "same guest and host ip",
