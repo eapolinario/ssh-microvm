@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -66,6 +67,32 @@ func TestNewRejectsBlankPath(t *testing.T) {
 		if st != nil {
 			t.Fatalf("New(%q) store = %#v, want nil", path, st)
 		}
+	}
+}
+
+func TestNewRejectsPathWithSurroundingWhitespaceBeforeSideEffects(t *testing.T) {
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	st, err := New(" test.sqlite ")
+	if err == nil {
+		if st != nil {
+			_ = st.Close()
+		}
+		t.Fatalf("New accepted database path with surrounding whitespace")
+	}
+	if st != nil {
+		t.Fatalf("New store = %#v, want nil", st)
+	}
+	if err.Error() != "database path must not contain surrounding whitespace" {
+		t.Fatalf("New error = %q, want surrounding whitespace validation error", err)
+	}
+	entries, readErr := os.ReadDir(workDir)
+	if readErr != nil {
+		t.Fatalf("read work dir: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("New created filesystem entries before validating path: %v", entries)
 	}
 }
 
