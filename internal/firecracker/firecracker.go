@@ -147,6 +147,9 @@ func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
 	if ctx == nil {
 		return errors.New("context must be set")
 	}
+	if graceful <= 0 {
+		return errors.New("graceful shutdown timeout must be > 0")
+	}
 	defer v.closeLog()
 	if v.Cmd == nil || v.Cmd.Process == nil {
 		_ = teardownTap(context.Background(), v.TapName)

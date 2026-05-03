@@ -48,6 +48,28 @@ func TestStopRejectsNilContext(t *testing.T) {
 	}
 }
 
+func TestStopRejectsNonPositiveGracefulTimeout(t *testing.T) {
+	cmd := exec.Command("sleep", "10")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start test process: %v", err)
+	}
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	})
+	vm := &VM{Cmd: cmd}
+
+	err := vm.Stop(context.Background(), 0)
+	if err == nil || !strings.Contains(err.Error(), "graceful shutdown timeout must be > 0") {
+		t.Fatalf("Stop error = %v, want graceful timeout validation error", err)
+	}
+	if cmd.ProcessState != nil {
+		t.Fatalf("Stop killed or waited for process despite validation failure")
+	}
+}
+
 func TestStopTreatsGracefulSIGTERMAsSuccess(t *testing.T) {
 	logFile, err := os.Create(filepath.Join(t.TempDir(), "firecracker.log"))
 	if err != nil {
