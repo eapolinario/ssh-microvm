@@ -614,4 +614,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 23,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_event_type_insert_valid
+BEFORE INSERT ON audit_events
+WHEN trim(NEW.event_type, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.event_type != trim(NEW.event_type, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'audit event type must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_event_type_update_valid
+BEFORE UPDATE OF event_type ON audit_events
+WHEN trim(NEW.event_type, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.event_type != trim(NEW.event_type, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'audit event type must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }

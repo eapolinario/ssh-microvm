@@ -179,6 +179,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 22 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 23")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 23: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 23 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -189,6 +196,55 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("table %s count = %d, want 1", table, count)
 		}
+	}
+}
+
+func TestEnsureSchemaEnforcesAuditEventTypeValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	for _, tt := range []struct {
+		name      string
+		eventID   string
+		eventType string
+	}{
+		{name: "blank event type", eventID: "bad-blank-event-type", eventType: " \t "},
+		{name: "padded event type", eventID: "bad-padded-event-type", eventType: " test.audit "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO audit_events(id, event_type, data_json, created_at)
+VALUES(?, ?, ?, ?)`, tt.eventID, tt.eventType, `{"ok":true}`, now()); err == nil {
+				t.Fatalf("inserted audit event with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	eventType := "test.audit"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO audit_events(id, event_type, data_json, created_at)
+VALUES(?, ?, ?, ?)`, "audit-1", eventType, `{"ok":true}`, now()); err != nil {
+		t.Fatalf("insert valid audit event: %v", err)
+	}
+	for _, tt := range []struct {
+		name      string
+		eventType string
+	}{
+		{name: "blank event type", eventType: "\n\t"},
+		{name: "padded event type", eventType: "\ttest.audit\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE audit_events SET event_type = ? WHERE id = ?", tt.eventType, "audit-1"); err == nil {
+				t.Fatalf("updated audit event to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotEventType string
+	row := st.db.QueryRowContext(ctx, "SELECT event_type FROM audit_events WHERE id = ?", "audit-1")
+	if err := row.Scan(&gotEventType); err != nil {
+		t.Fatalf("query audit event type: %v", err)
+	}
+	if gotEventType != eventType {
+		t.Fatalf("audit event_type = %q, want %q", gotEventType, eventType)
 	}
 }
 
