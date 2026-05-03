@@ -1198,4 +1198,76 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 50,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_insert_authorized_key_type
+BEFORE INSERT ON keys
+WHEN (instr(NEW.public_key, ' ') > 0 OR instr(NEW.public_key, char(9)) > 0)
+AND (
+	CASE
+	WHEN instr(NEW.public_key, ' ') > 0
+	AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+	THEN substr(NEW.public_key, 1, instr(NEW.public_key, ' ') - 1)
+	WHEN instr(NEW.public_key, char(9)) > 0
+	THEN substr(NEW.public_key, 1, instr(NEW.public_key, char(9)) - 1)
+	ELSE NEW.public_key
+	END
+) NOT IN (
+	'ssh-rsa',
+	'ssh-rsa-cert-v01@openssh.com',
+	'ssh-dss',
+	'ssh-dss-cert-v01@openssh.com',
+	'ssh-ed25519',
+	'ssh-ed25519-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp256',
+	'ecdsa-sha2-nistp256-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp384',
+	'ecdsa-sha2-nistp384-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp521',
+	'ecdsa-sha2-nistp521-cert-v01@openssh.com',
+	'sk-ssh-ed25519@openssh.com',
+	'sk-ssh-ed25519-cert-v01@openssh.com',
+	'sk-ecdsa-sha2-nistp256@openssh.com',
+	'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com'
+)
+BEGIN
+	SELECT RAISE(ABORT, 'public key must be a supported authorized key type');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_update_authorized_key_type
+BEFORE UPDATE OF public_key ON keys
+WHEN (instr(NEW.public_key, ' ') > 0 OR instr(NEW.public_key, char(9)) > 0)
+AND (
+	CASE
+	WHEN instr(NEW.public_key, ' ') > 0
+	AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+	THEN substr(NEW.public_key, 1, instr(NEW.public_key, ' ') - 1)
+	WHEN instr(NEW.public_key, char(9)) > 0
+	THEN substr(NEW.public_key, 1, instr(NEW.public_key, char(9)) - 1)
+	ELSE NEW.public_key
+	END
+) NOT IN (
+	'ssh-rsa',
+	'ssh-rsa-cert-v01@openssh.com',
+	'ssh-dss',
+	'ssh-dss-cert-v01@openssh.com',
+	'ssh-ed25519',
+	'ssh-ed25519-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp256',
+	'ecdsa-sha2-nistp256-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp384',
+	'ecdsa-sha2-nistp384-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp521',
+	'ecdsa-sha2-nistp521-cert-v01@openssh.com',
+	'sk-ssh-ed25519@openssh.com',
+	'sk-ssh-ed25519-cert-v01@openssh.com',
+	'sk-ecdsa-sha2-nistp256@openssh.com',
+	'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com'
+)
+BEGIN
+	SELECT RAISE(ABORT, 'public key must be a supported authorized key type');
+END;
+`,
+	},
 }
