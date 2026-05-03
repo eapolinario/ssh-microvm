@@ -1287,6 +1287,66 @@ func TestAttachVMRequiresVMForSameSession(t *testing.T) {
 	}
 }
 
+func TestAttachVMRejectsAlreadyAttachedSession(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	vms := []VM{
+		{
+			ID:        "vm-1",
+			SessionID: session.ID,
+			StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+			FCPid:     1234,
+			StartedAt: now(),
+		},
+		{
+			ID:        "vm-2",
+			SessionID: session.ID,
+			StateDir:  filepath.Join(t.TempDir(), "vm-2"),
+			FCPid:     1235,
+			StartedAt: now(),
+		},
+	}
+	for _, vm := range vms {
+		if err := st.CreateVM(ctx, vm); err != nil {
+			t.Fatalf("CreateVM %s: %v", vm.ID, err)
+		}
+	}
+	if err := st.AttachVM(ctx, session.ID, vms[0].ID); err != nil {
+		t.Fatalf("AttachVM first VM: %v", err)
+	}
+
+	err = st.AttachVM(ctx, session.ID, vms[1].ID)
+	if err != sql.ErrNoRows {
+		t.Fatalf("second AttachVM error = %v, want sql.ErrNoRows", err)
+	}
+
+	var attachedVM string
+	row := st.db.QueryRowContext(ctx, "SELECT vm_id FROM sessions WHERE id = ?", session.ID)
+	if err := row.Scan(&attachedVM); err != nil {
+		t.Fatalf("query session vm_id: %v", err)
+	}
+	if attachedVM != vms[0].ID {
+		t.Fatalf("session vm_id = %q, want original VM %q", attachedVM, vms[0].ID)
+	}
+}
+
 func TestCreateVMRejectsBlankFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
