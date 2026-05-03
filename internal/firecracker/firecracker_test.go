@@ -347,6 +347,13 @@ func TestManagerStartRejectsInvalidConfigBeforeSideEffects(t *testing.T) {
 			wantErr: "tap prefix must contain at least one ASCII letter or digit",
 		},
 		{
+			name: "tap prefix with surrounding whitespace",
+			mutate: func(cfg *config.Config) {
+				cfg.TapPrefix = " tap "
+			},
+			wantErr: "tap prefix must not contain surrounding whitespace",
+		},
+		{
 			name: "tap prefix with invalid characters",
 			mutate: func(cfg *config.Config) {
 				cfg.TapPrefix = "tap-bad"
@@ -511,6 +518,13 @@ func TestTapCommandHelpersRejectInvalidState(t *testing.T) {
 			wantErr: "tap name is empty",
 		},
 		{
+			name: "setupTap tap name with surrounding whitespace",
+			run: func() error {
+				return setupTap(context.Background(), " tap0 ", "172.16.0.1")
+			},
+			wantErr: "tap name must not contain surrounding whitespace",
+		},
+		{
 			name: "setupTap invalid tap name characters",
 			run: func() error {
 				return setupTap(context.Background(), "tap bad", "172.16.0.1")
@@ -558,6 +572,13 @@ func TestTapCommandHelpersRejectInvalidState(t *testing.T) {
 				return teardownTap(context.Background(), " \t ")
 			},
 			wantErr: "tap name is empty",
+		},
+		{
+			name: "teardownTap tap name with surrounding whitespace",
+			run: func() error {
+				return teardownTap(context.Background(), " tap0 ")
+			},
+			wantErr: "tap name must not contain surrounding whitespace",
 		},
 		{
 			name: "teardownTap invalid tap name characters",

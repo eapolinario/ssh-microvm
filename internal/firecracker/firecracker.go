@@ -208,6 +208,9 @@ func validateStartConfig(cfg *config.Config) error {
 	if sanitizedTapPrefix == "" {
 		return errors.New("tap prefix must contain at least one ASCII letter or digit")
 	}
+	if cfg.TapPrefix != strings.TrimSpace(cfg.TapPrefix) {
+		return errors.New("tap prefix must not contain surrounding whitespace")
+	}
 	if cfg.TapPrefix != sanitizedTapPrefix {
 		return errors.New("tap prefix must contain only ASCII letters and digits")
 	}
@@ -363,6 +366,9 @@ func teardownTap(ctx context.Context, tapName string) error {
 func validateTapName(tapName string) error {
 	if strings.TrimSpace(tapName) == "" {
 		return errors.New("tap name is empty")
+	}
+	if tapName != strings.TrimSpace(tapName) {
+		return errors.New("tap name must not contain surrounding whitespace")
 	}
 	if len(tapName) > 15 {
 		return errors.New("tap name must be <= 15 characters")
