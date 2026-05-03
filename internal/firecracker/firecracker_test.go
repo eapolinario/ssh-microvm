@@ -40,6 +40,15 @@ func TestStopWithoutProcessDoesNotPanic(t *testing.T) {
 	}
 }
 
+func TestStopWithoutProcessReportsInvalidTapName(t *testing.T) {
+	vm := &VM{TapName: "tap/bad"}
+
+	err := vm.Stop(context.Background(), time.Second)
+	if err == nil || !strings.Contains(err.Error(), "tap name must contain only ASCII letters and digits") {
+		t.Fatalf("Stop error = %v, want tap name validation error", err)
+	}
+}
+
 func TestStopRejectsNilContext(t *testing.T) {
 	vm := &VM{}
 

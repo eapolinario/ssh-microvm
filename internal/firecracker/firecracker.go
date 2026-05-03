@@ -217,12 +217,10 @@ func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
 	}
 	defer v.closeLog()
 	if v.Cmd == nil || v.Cmd.Process == nil {
-		_ = teardownTap(context.Background(), v.TapName)
-		return nil
+		return v.teardownTap()
 	}
 	if v.Cmd.ProcessState != nil {
-		_ = teardownTap(context.Background(), v.TapName)
-		return nil
+		return v.teardownTap()
 	}
 	_ = v.Cmd.Process.Signal(syscall.SIGTERM)
 
@@ -235,20 +233,35 @@ func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
 	case <-ctx.Done():
 		_ = v.Cmd.Process.Kill()
 		<-done
-		_ = teardownTap(context.Background(), v.TapName)
+		if err := v.teardownTap(); err != nil {
+			return errors.Join(ctx.Err(), err)
+		}
 		return ctx.Err()
 	case <-time.After(graceful):
 		_ = v.Cmd.Process.Kill()
 		<-done
-		_ = teardownTap(context.Background(), v.TapName)
-		return errors.New("firecracker shutdown timeout")
+		err := errors.New("firecracker shutdown timeout")
+		if teardownErr := v.teardownTap(); teardownErr != nil {
+			return errors.Join(err, teardownErr)
+		}
+		return err
 	case err := <-done:
-		_ = teardownTap(context.Background(), v.TapName)
+		teardownErr := v.teardownTap()
 		if wasSignal(err, syscall.SIGTERM) {
-			return nil
+			return teardownErr
+		}
+		if teardownErr != nil {
+			return errors.Join(err, teardownErr)
 		}
 		return err
 	}
+}
+
+func (v *VM) teardownTap() error {
+	if v.TapName == "" {
+		return nil
+	}
+	return teardownTap(context.Background(), v.TapName)
 }
 
 func (v *VM) closeLog() {
