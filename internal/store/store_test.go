@@ -172,6 +172,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 21 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 22")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 22: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 22 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -492,6 +499,55 @@ VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2
 	}
 	if !gotEndedAt.Valid || gotEndedAt.String != endedAt {
 		t.Fatalf("session ended_at = %v, want %q", gotEndedAt, endedAt)
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionEndTimeFormat(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		sessionID string
+		endedAt   string
+	}{
+		{name: "space separated end time", sessionID: "bad-space-end-time", endedAt: "2026-05-03 14:03:32"},
+		{name: "missing timezone end time", sessionID: "bad-missing-timezone-end-time", endedAt: "2026-05-03T14:03:32"},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, ended_at, status)
+VALUES(?, ?, ?, ?, ?, ?, ?)`, tt.sessionID, userID, testKeyFingerprint, "127.0.0.1:2222", now(), tt.endedAt, "closed"); err == nil {
+				t.Fatalf("inserted session with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	startedAt := now()
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2222", startedAt, "active"); err != nil {
+		t.Fatalf("insert valid active session: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?", "2026-05-03 14:03:32", "closed", "session-1"); err == nil {
+		t.Fatalf("updated session to space separated end time, want trigger error")
+	}
+
+	validOffsetTime := "2026-05-03T14:03:32-04:00"
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?", validOffsetTime, "closed", "session-1"); err != nil {
+		t.Fatalf("updated session to valid offset end time: %v", err)
+	}
+
+	var gotEndedAt sql.NullString
+	row := st.db.QueryRowContext(ctx, "SELECT ended_at FROM sessions WHERE id = ?", "session-1")
+	if err := row.Scan(&gotEndedAt); err != nil {
+		t.Fatalf("query session ended_at: %v", err)
+	}
+	if !gotEndedAt.Valid || gotEndedAt.String != validOffsetTime {
+		t.Fatalf("session ended_at = %v, want %q", gotEndedAt, validOffsetTime)
 	}
 }
 

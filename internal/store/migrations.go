@@ -580,4 +580,38 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 22,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_ended_at_insert_rfc3339
+BEFORE INSERT ON sessions
+WHEN NEW.ended_at IS NOT NULL
+AND (
+	julianday(NEW.ended_at) IS NULL
+	OR instr(NEW.ended_at, 'T') != 11
+	OR (
+		substr(NEW.ended_at, -1) != 'Z'
+		AND substr(NEW.ended_at, -6, 1) NOT IN ('+', '-')
+	)
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session end time must be a valid RFC3339 timestamp');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_ended_at_update_rfc3339
+BEFORE UPDATE OF ended_at ON sessions
+WHEN NEW.ended_at IS NOT NULL
+AND (
+	julianday(NEW.ended_at) IS NULL
+	OR instr(NEW.ended_at, 'T') != 11
+	OR (
+		substr(NEW.ended_at, -1) != 'Z'
+		AND substr(NEW.ended_at, -6, 1) NOT IN ('+', '-')
+	)
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session end time must be a valid RFC3339 timestamp');
+END;
+`,
+	},
 }
