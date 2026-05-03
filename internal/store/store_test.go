@@ -175,6 +175,85 @@ func TestCreateSessionRequiresExistingUserAndKey(t *testing.T) {
 	}
 }
 
+func TestCreateSessionRejectsBlankFields(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	valid := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	tests := []struct {
+		name   string
+		mutate func(*Session)
+	}{
+		{
+			name: "blank ID",
+			mutate: func(session *Session) {
+				session.ID = " \t "
+			},
+		},
+		{
+			name: "blank user ID",
+			mutate: func(session *Session) {
+				session.UserID = " \t "
+			},
+		},
+		{
+			name: "blank key fingerprint",
+			mutate: func(session *Session) {
+				session.KeyFingerprint = " \t "
+			},
+		},
+		{
+			name: "blank remote address",
+			mutate: func(session *Session) {
+				session.RemoteAddr = " \t "
+			},
+		},
+		{
+			name: "blank start time",
+			mutate: func(session *Session) {
+				session.StartedAt = " \t "
+			},
+		},
+		{
+			name: "blank status",
+			mutate: func(session *Session) {
+				session.Status = " \t "
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			session := valid
+			tt.mutate(&session)
+			if err := st.CreateSession(ctx, session); err == nil {
+				t.Fatalf("CreateSession accepted %s", tt.name)
+			}
+		})
+	}
+
+	var sessionCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions")
+	if err := row.Scan(&sessionCount); err != nil {
+		t.Fatalf("query sessions: %v", err)
+	}
+	if sessionCount != 0 {
+		t.Fatalf("blank CreateSession inserted sessions=%d, want 0", sessionCount)
+	}
+}
+
 func TestEnsureUserAndKeyRejectsBlankInputs(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -273,6 +352,83 @@ func TestAttachVMRequiresExistingVM(t *testing.T) {
 	}
 	if attachedVM.Valid {
 		t.Fatalf("AttachVM set vm_id to %q for missing VM", attachedVM.String)
+	}
+}
+
+func TestCreateVMRejectsBlankFields(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	valid := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	tests := []struct {
+		name   string
+		mutate func(*VM)
+	}{
+		{
+			name: "blank ID",
+			mutate: func(vm *VM) {
+				vm.ID = " \t "
+			},
+		},
+		{
+			name: "blank session ID",
+			mutate: func(vm *VM) {
+				vm.SessionID = " \t "
+			},
+		},
+		{
+			name: "blank state directory",
+			mutate: func(vm *VM) {
+				vm.StateDir = " \t "
+			},
+		},
+		{
+			name: "blank start time",
+			mutate: func(vm *VM) {
+				vm.StartedAt = " \t "
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vm := valid
+			tt.mutate(&vm)
+			if err := st.CreateVM(ctx, vm); err == nil {
+				t.Fatalf("CreateVM accepted %s", tt.name)
+			}
+		})
+	}
+
+	var vmCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM vms")
+	if err := row.Scan(&vmCount); err != nil {
+		t.Fatalf("query vms: %v", err)
+	}
+	if vmCount != 0 {
+		t.Fatalf("blank CreateVM inserted VMs=%d, want 0", vmCount)
 	}
 }
 

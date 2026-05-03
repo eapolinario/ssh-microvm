@@ -157,6 +157,24 @@ ON CONFLICT(fingerprint) DO UPDATE SET
 }
 
 func (s *Store) CreateSession(ctx context.Context, session Session) error {
+	if isBlank(session.ID) {
+		return errors.New("session ID must be set")
+	}
+	if isBlank(session.UserID) {
+		return errors.New("session user ID must be set")
+	}
+	if isBlank(session.KeyFingerprint) {
+		return errors.New("session key fingerprint must be set")
+	}
+	if isBlank(session.RemoteAddr) {
+		return errors.New("session remote address must be set")
+	}
+	if isBlank(session.StartedAt) {
+		return errors.New("session start time must be set")
+	}
+	if isBlank(session.Status) {
+		return errors.New("session status must be set")
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
 VALUES(?, ?, ?, ?, ?, ?)`, session.ID, session.UserID, session.KeyFingerprint, session.RemoteAddr, session.StartedAt, session.Status)
 	return err
@@ -171,6 +189,18 @@ func (s *Store) AttachVM(ctx context.Context, sessionID, vmID string) error {
 }
 
 func (s *Store) CreateVM(ctx context.Context, vm VM) error {
+	if isBlank(vm.ID) {
+		return errors.New("VM ID must be set")
+	}
+	if isBlank(vm.SessionID) {
+		return errors.New("VM session ID must be set")
+	}
+	if isBlank(vm.StateDir) {
+		return errors.New("VM state directory must be set")
+	}
+	if isBlank(vm.StartedAt) {
+		return errors.New("VM start time must be set")
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
 VALUES(?, ?, ?, ?, ?)`, vm.ID, vm.SessionID, vm.StateDir, vm.FCPid, vm.StartedAt)
 	return err
