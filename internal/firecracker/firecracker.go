@@ -31,6 +31,7 @@ type VM struct {
 	Cmd      *exec.Cmd
 	TapName  string
 	GuestIP  string
+	logFile  *os.File
 }
 
 func NewManager(cfg *config.Config) *Manager {
@@ -77,6 +78,7 @@ func (m *Manager) Start(ctx context.Context) (*VM, error) {
 		Cmd:      cmd,
 		TapName:  tapName,
 		GuestIP:  m.cfg.GuestIP,
+		logFile:  logFile,
 	}
 
 	if err := waitForSocket(apiSock, 2*time.Second); err != nil {
@@ -131,6 +133,7 @@ func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
 	if v == nil {
 		return nil
 	}
+	defer v.closeLog()
 	if v.Cmd == nil || v.Cmd.Process == nil {
 		_ = teardownTap(context.Background(), v.TapName)
 		return nil
@@ -155,6 +158,14 @@ func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
 		_ = teardownTap(context.Background(), v.TapName)
 		return err
 	}
+}
+
+func (v *VM) closeLog() {
+	if v.logFile == nil {
+		return
+	}
+	_ = v.logFile.Close()
+	v.logFile = nil
 }
 
 func buildBootArgs(cfg *config.Config) string {

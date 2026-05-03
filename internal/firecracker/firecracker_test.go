@@ -6,6 +6,8 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -22,10 +24,17 @@ func TestStopNilVMDoesNotPanic(t *testing.T) {
 }
 
 func TestStopWithoutProcessDoesNotPanic(t *testing.T) {
-	vm := &VM{}
+	logFile, err := os.Create(filepath.Join(t.TempDir(), "firecracker.log"))
+	if err != nil {
+		t.Fatalf("create log file: %v", err)
+	}
+	vm := &VM{logFile: logFile}
 
 	if err := vm.Stop(context.Background(), time.Second); err != nil {
 		t.Fatalf("Stop without process returned error: %v", err)
+	}
+	if _, err := logFile.WriteString("after stop"); err == nil {
+		t.Fatalf("Stop did not close the VM log file")
 	}
 }
 
