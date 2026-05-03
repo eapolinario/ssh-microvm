@@ -543,6 +543,14 @@ func TestParseSSHRequestPayloadsRejectInvalidData(t *testing.T) {
 	if _, ok := parseExecRequest(invalid); ok {
 		t.Fatalf("parseExecRequest accepted invalid payload")
 	}
+	for _, command := range []string{"", " \t "} {
+		payload := ssh.Marshal(struct {
+			Command string
+		}{Command: command})
+		if _, ok := parseExecRequest(payload); ok {
+			t.Fatalf("parseExecRequest accepted blank command %q", command)
+		}
+	}
 }
 
 func TestProxyToGuestRejectsInvalidState(t *testing.T) {

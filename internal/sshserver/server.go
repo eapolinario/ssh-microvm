@@ -485,6 +485,9 @@ func parseExecRequest(payload []byte) (string, bool) {
 	if err := ssh.Unmarshal(payload, &req); err != nil {
 		return "", false
 	}
+	if strings.TrimSpace(req.Command) == "" {
+		return "", false
+	}
 	return req.Command, true
 }
 
