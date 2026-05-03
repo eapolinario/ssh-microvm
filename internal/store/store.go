@@ -91,6 +91,9 @@ func (s *Store) applyMigration(ctx context.Context, m migration) error {
 }
 
 func (s *Store) HasKey(ctx context.Context, fingerprint string) (bool, error) {
+	if isBlank(fingerprint) {
+		return false, errors.New("key fingerprint must be set")
+	}
 	row := s.db.QueryRowContext(ctx, "SELECT COUNT(1) FROM keys WHERE fingerprint = ?", fingerprint)
 	var count int
 	if err := row.Scan(&count); err != nil {

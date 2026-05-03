@@ -306,6 +306,19 @@ func TestEnsureUserAndKeyRejectsBlankInputs(t *testing.T) {
 	}
 }
 
+func TestHasKeyRejectsBlankFingerprint(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	hasKey, err := st.HasKey(ctx, " \t ")
+	if err == nil {
+		t.Fatalf("HasKey accepted a blank fingerprint")
+	}
+	if hasKey {
+		t.Fatalf("HasKey returned true for a blank fingerprint")
+	}
+}
+
 func TestLifecycleUpdatesRequireExistingRecords(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
