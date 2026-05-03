@@ -414,8 +414,11 @@ func parseExecRequest(payload []byte) (string, bool) {
 }
 
 func (s *Server) proxyToGuest(ch ssh.Channel, ptyReq *ptyRequest, winCh <-chan windowChange, shell bool, execCmd string, vm *firecracker.VM) error {
-	if vm == nil {
-		return errors.New("vm not available")
+	if err := s.validateGuestProxy(ch, vm); err != nil {
+		return err
+	}
+	if err := s.validateGuestDial(vm.GuestIP); err != nil {
+		return err
 	}
 	if err := waitForPort(fmt.Sprintf("%s:22", vm.GuestIP), 15*time.Second); err != nil {
 		return err
@@ -462,7 +465,45 @@ func (s *Server) proxyToGuest(ch ssh.Channel, ptyReq *ptyRequest, winCh <-chan w
 	return session.Run(execCmd)
 }
 
+func (s *Server) validateGuestProxy(ch ssh.Channel, vm *firecracker.VM) error {
+	if s == nil {
+		return errors.New("server must be set")
+	}
+	if s.cfg == nil {
+		return errors.New("config must be set")
+	}
+	if ch == nil {
+		return errors.New("ssh channel must be set")
+	}
+	if vm == nil {
+		return errors.New("vm not available")
+	}
+	return nil
+}
+
+func (s *Server) validateGuestDial(guestIP string) error {
+	if s == nil {
+		return errors.New("server must be set")
+	}
+	if s.cfg == nil {
+		return errors.New("config must be set")
+	}
+	if strings.TrimSpace(guestIP) == "" {
+		return errors.New("guest IP must be set")
+	}
+	if strings.TrimSpace(s.cfg.GuestUser) == "" {
+		return errors.New("guest user must be set")
+	}
+	if strings.TrimSpace(s.cfg.GuestKeyPath) == "" {
+		return errors.New("guest key path must be set")
+	}
+	return nil
+}
+
 func (s *Server) dialGuest(guestIP string) (*ssh.Client, error) {
+	if err := s.validateGuestDial(guestIP); err != nil {
+		return nil, err
+	}
 	keyData, err := os.ReadFile(s.cfg.GuestKeyPath)
 	if err != nil {
 		return nil, err

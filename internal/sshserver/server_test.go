@@ -1,10 +1,12 @@
 package sshserver
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -463,6 +465,131 @@ func TestParseSSHRequestPayloadsRejectInvalidData(t *testing.T) {
 	}
 }
 
+func TestProxyToGuestRejectsInvalidState(t *testing.T) {
+	validCfg := &config.Config{
+		GuestUser:    "root",
+		GuestKeyPath: "/keys/guest",
+	}
+	validServer := &Server{cfg: validCfg}
+	validChannel := &testSSHChannel{}
+	validVM := &firecracker.VM{GuestIP: "127.0.0.1"}
+
+	tests := []struct {
+		name    string
+		server  *Server
+		channel ssh.Channel
+		vm      *firecracker.VM
+		wantErr string
+	}{
+		{
+			name:    "nil server",
+			channel: validChannel,
+			vm:      validVM,
+			wantErr: "server must be set",
+		},
+		{
+			name:    "nil config",
+			server:  &Server{},
+			channel: validChannel,
+			vm:      validVM,
+			wantErr: "config must be set",
+		},
+		{
+			name:    "nil channel",
+			server:  validServer,
+			vm:      validVM,
+			wantErr: "ssh channel must be set",
+		},
+		{
+			name:    "nil VM",
+			server:  validServer,
+			channel: validChannel,
+			wantErr: "vm not available",
+		},
+		{
+			name:    "blank guest IP",
+			server:  validServer,
+			channel: validChannel,
+			vm:      &firecracker.VM{GuestIP: " \t "},
+			wantErr: "guest IP must be set",
+		},
+		{
+			name:    "blank guest user",
+			server:  &Server{cfg: &config.Config{GuestUser: " \t ", GuestKeyPath: "/keys/guest"}},
+			channel: validChannel,
+			vm:      validVM,
+			wantErr: "guest user must be set",
+		},
+		{
+			name:    "blank guest key",
+			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: " \t "}},
+			channel: validChannel,
+			vm:      validVM,
+			wantErr: "guest key path must be set",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.server.proxyToGuest(tt.channel, nil, nil, true, "", tt.vm)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("proxyToGuest error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestDialGuestRejectsInvalidState(t *testing.T) {
+	tests := []struct {
+		name    string
+		server  *Server
+		guestIP string
+		wantErr string
+	}{
+		{
+			name:    "nil server",
+			guestIP: "127.0.0.1",
+			wantErr: "server must be set",
+		},
+		{
+			name:    "nil config",
+			server:  &Server{},
+			guestIP: "127.0.0.1",
+			wantErr: "config must be set",
+		},
+		{
+			name:    "blank guest IP",
+			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: "/keys/guest"}},
+			guestIP: " \t ",
+			wantErr: "guest IP must be set",
+		},
+		{
+			name:    "blank guest user",
+			server:  &Server{cfg: &config.Config{GuestUser: " \t ", GuestKeyPath: "/keys/guest"}},
+			guestIP: "127.0.0.1",
+			wantErr: "guest user must be set",
+		},
+		{
+			name:    "blank guest key",
+			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: " \t "}},
+			guestIP: "127.0.0.1",
+			wantErr: "guest key path must be set",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client, err := tt.server.dialGuest(tt.guestIP)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("dialGuest error = %v, want containing %q", err, tt.wantErr)
+			}
+			if client != nil {
+				t.Fatalf("dialGuest client = %#v, want nil", client)
+			}
+		})
+	}
+}
+
 func TestWaitForPort(t *testing.T) {
 	t.Run("ready listener", func(t *testing.T) {
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -573,4 +700,24 @@ func assertPermissionExtension(t *testing.T, perms *ssh.Permissions, key, want s
 	if got != want {
 		t.Fatalf("permissions extension %q = %q, want %q", key, got, want)
 	}
+}
+
+type testSSHChannel struct {
+	bytes.Buffer
+}
+
+func (c *testSSHChannel) Close() error {
+	return nil
+}
+
+func (c *testSSHChannel) CloseWrite() error {
+	return nil
+}
+
+func (c *testSSHChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
+	return false, nil
+}
+
+func (c *testSSHChannel) Stderr() io.ReadWriter {
+	return &bytes.Buffer{}
 }
