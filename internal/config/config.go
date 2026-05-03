@@ -224,6 +224,9 @@ func isASCIIAlphaNumeric(r rune) bool {
 }
 
 func validateListenAddr(value string) error {
+	if isBlank(value) {
+		return errors.New("--listen must be set")
+	}
 	_, port, err := net.SplitHostPort(value)
 	if err != nil {
 		return fmt.Errorf("--listen must be a valid TCP address: %s", value)

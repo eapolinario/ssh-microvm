@@ -227,6 +227,11 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			wantErr: "--rootfs is required",
 		},
 		{
+			name:    "missing listen address",
+			args:    requiredArgs("--listen", ""),
+			wantErr: "--listen must be set",
+		},
+		{
 			name:    "invalid listen address",
 			args:    requiredArgs("--listen", "127.0.0.1"),
 			wantErr: "--listen must be a valid TCP address: 127.0.0.1",
