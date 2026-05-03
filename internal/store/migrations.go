@@ -1620,4 +1620,132 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 53,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_insert_authorized_key_blob_base64_shape
+BEFORE INSERT ON keys
+BEGIN
+WITH parsed AS (
+	SELECT CASE
+	WHEN instr(NEW.public_key, ' ') > 0
+	AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+	THEN instr(NEW.public_key, ' ')
+	WHEN instr(NEW.public_key, char(9)) > 0
+	THEN instr(NEW.public_key, char(9))
+	ELSE 0
+	END AS first_separator
+),
+fields AS (
+	SELECT CASE
+	WHEN first_separator > 0 THEN substr(NEW.public_key, 1, first_separator - 1)
+	ELSE NEW.public_key
+	END AS key_type,
+	ltrim(substr(NEW.public_key, first_separator + 1), char(9, 32)) AS after_type
+	FROM parsed
+),
+blob AS (
+	SELECT key_type, CASE
+	WHEN instr(after_type, ' ') > 0
+	AND (instr(after_type, char(9)) = 0 OR instr(after_type, ' ') < instr(after_type, char(9)))
+	THEN substr(after_type, 1, instr(after_type, ' ') - 1)
+	WHEN instr(after_type, char(9)) > 0
+	THEN substr(after_type, 1, instr(after_type, char(9)) - 1)
+	ELSE after_type
+	END AS value
+	FROM fields
+)
+SELECT RAISE(ABORT, 'public key must be a valid authorized key')
+FROM blob
+WHERE (instr(NEW.public_key, ' ') > 0 OR instr(NEW.public_key, char(9)) > 0)
+AND instr(NEW.public_key, char(10)) = 0
+AND instr(NEW.public_key, char(13)) = 0
+AND key_type IN (
+	'ssh-rsa',
+	'ssh-rsa-cert-v01@openssh.com',
+	'ssh-dss',
+	'ssh-dss-cert-v01@openssh.com',
+	'ssh-ed25519',
+	'ssh-ed25519-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp256',
+	'ecdsa-sha2-nistp256-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp384',
+	'ecdsa-sha2-nistp384-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp521',
+	'ecdsa-sha2-nistp521-cert-v01@openssh.com',
+	'sk-ssh-ed25519@openssh.com',
+	'sk-ssh-ed25519-cert-v01@openssh.com',
+	'sk-ecdsa-sha2-nistp256@openssh.com',
+	'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com'
+)
+AND (
+	length(value) % 4 != 0
+	OR value GLOB '*=[A-Za-z0-9+/]*'
+	OR value GLOB '*===*'
+);
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_update_authorized_key_blob_base64_shape
+BEFORE UPDATE OF public_key ON keys
+BEGIN
+WITH parsed AS (
+	SELECT CASE
+	WHEN instr(NEW.public_key, ' ') > 0
+	AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+	THEN instr(NEW.public_key, ' ')
+	WHEN instr(NEW.public_key, char(9)) > 0
+	THEN instr(NEW.public_key, char(9))
+	ELSE 0
+	END AS first_separator
+),
+fields AS (
+	SELECT CASE
+	WHEN first_separator > 0 THEN substr(NEW.public_key, 1, first_separator - 1)
+	ELSE NEW.public_key
+	END AS key_type,
+	ltrim(substr(NEW.public_key, first_separator + 1), char(9, 32)) AS after_type
+	FROM parsed
+),
+blob AS (
+	SELECT key_type, CASE
+	WHEN instr(after_type, ' ') > 0
+	AND (instr(after_type, char(9)) = 0 OR instr(after_type, ' ') < instr(after_type, char(9)))
+	THEN substr(after_type, 1, instr(after_type, ' ') - 1)
+	WHEN instr(after_type, char(9)) > 0
+	THEN substr(after_type, 1, instr(after_type, char(9)) - 1)
+	ELSE after_type
+	END AS value
+	FROM fields
+)
+SELECT RAISE(ABORT, 'public key must be a valid authorized key')
+FROM blob
+WHERE (instr(NEW.public_key, ' ') > 0 OR instr(NEW.public_key, char(9)) > 0)
+AND instr(NEW.public_key, char(10)) = 0
+AND instr(NEW.public_key, char(13)) = 0
+AND key_type IN (
+	'ssh-rsa',
+	'ssh-rsa-cert-v01@openssh.com',
+	'ssh-dss',
+	'ssh-dss-cert-v01@openssh.com',
+	'ssh-ed25519',
+	'ssh-ed25519-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp256',
+	'ecdsa-sha2-nistp256-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp384',
+	'ecdsa-sha2-nistp384-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp521',
+	'ecdsa-sha2-nistp521-cert-v01@openssh.com',
+	'sk-ssh-ed25519@openssh.com',
+	'sk-ssh-ed25519-cert-v01@openssh.com',
+	'sk-ecdsa-sha2-nistp256@openssh.com',
+	'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com'
+)
+AND (
+	length(value) % 4 != 0
+	OR value GLOB '*=[A-Za-z0-9+/]*'
+	OR value GLOB '*===*'
+);
+END;
+`,
+	},
 }
