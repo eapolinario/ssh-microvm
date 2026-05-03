@@ -532,6 +532,13 @@ func TestTapCommandHelpersRejectInvalidState(t *testing.T) {
 			wantErr: "host IP must be a valid IPv4 address",
 		},
 		{
+			name: "setupTap host IP with surrounding whitespace",
+			run: func() error {
+				return setupTap(context.Background(), "tap0", " 172.16.0.1 ")
+			},
+			wantErr: "host IP must not contain surrounding whitespace",
+		},
+		{
 			name: "teardownTap nil context",
 			run: func() error {
 				return teardownTap(nil, "tap0")

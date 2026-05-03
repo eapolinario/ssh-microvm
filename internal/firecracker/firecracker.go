@@ -317,9 +317,12 @@ func setupTap(ctx context.Context, tapName, hostIP string) error {
 	if err := validateTapName(tapName); err != nil {
 		return err
 	}
-	hostIP = strings.TrimSpace(hostIP)
-	if hostIP == "" {
+	trimmedHostIP := strings.TrimSpace(hostIP)
+	if trimmedHostIP == "" {
 		return errors.New("host IP is empty")
+	}
+	if hostIP != trimmedHostIP {
+		return errors.New("host IP must not contain surrounding whitespace")
 	}
 	if !isIPv4(hostIP) {
 		return fmt.Errorf("host IP must be a valid IPv4 address: %s", hostIP)
