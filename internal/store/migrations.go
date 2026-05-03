@@ -1178,4 +1178,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 49,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_insert_authorized_key_fields
+BEFORE INSERT ON keys
+WHEN instr(NEW.public_key, ' ') = 0
+AND instr(NEW.public_key, char(9)) = 0
+BEGIN
+	SELECT RAISE(ABORT, 'public key must be a valid authorized key');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_update_authorized_key_fields
+BEFORE UPDATE OF public_key ON keys
+WHEN instr(NEW.public_key, ' ') = 0
+AND instr(NEW.public_key, char(9)) = 0
+BEGIN
+	SELECT RAISE(ABORT, 'public key must be a valid authorized key');
+END;
+`,
+	},
 }
