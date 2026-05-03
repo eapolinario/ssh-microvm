@@ -463,6 +463,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 62 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 63")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 63: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 63 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -2083,6 +2090,47 @@ VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", rsaKeyWithThreeModulusByte
 	}
 	if gotPublicKey != rsaKeyWithThreeModulusBytes {
 		t.Fatalf("key public_key = %q, want %q", gotPublicKey, rsaKeyWithThreeModulusBytes)
+	}
+}
+
+func TestEnsureSchemaEnforcesKeyPublicKeyRSABlobDeclaredFourByteModulus(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", now(), now()); err != nil {
+		t.Fatalf("insert user fixture: %v", err)
+	}
+
+	rsaKeyWithShortDeclaredFourByteModulus := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAABAECAw=="
+	_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testSHA256Fingerprint('A'), "user-1", rsaKeyWithShortDeclaredFourByteModulus, now(), now())
+	if err == nil {
+		t.Fatalf("inserted key with short declared four-byte RSA modulus, want trigger error")
+	}
+	if !strings.Contains(err.Error(), "ssh-rsa public key blob must include declared four-byte modulus") {
+		t.Fatalf("insert key with short declared four-byte RSA modulus error = %v, want RSA declared four-byte modulus trigger error", err)
+	}
+
+	rsaKeyWithFourModulusBytes := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAABAECAwQ="
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", rsaKeyWithFourModulusBytes, now(), now()); err != nil {
+		t.Fatalf("insert valid RSA key with four declared modulus bytes: %v", err)
+	}
+	_, err = st.db.ExecContext(ctx, "UPDATE keys SET public_key = ? WHERE fingerprint = ?", rsaKeyWithShortDeclaredFourByteModulus, testKeyFingerprint)
+	if err == nil {
+		t.Fatalf("updated key to short declared four-byte RSA modulus, want trigger error")
+	}
+	if !strings.Contains(err.Error(), "ssh-rsa public key blob must include declared four-byte modulus") {
+		t.Fatalf("update key to short declared four-byte RSA modulus error = %v, want RSA declared four-byte modulus trigger error", err)
+	}
+
+	var gotPublicKey string
+	row := st.db.QueryRowContext(ctx, "SELECT public_key FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&gotPublicKey); err != nil {
+		t.Fatalf("query key public_key: %v", err)
+	}
+	if gotPublicKey != rsaKeyWithFourModulusBytes {
+		t.Fatalf("key public_key = %q, want %q", gotPublicKey, rsaKeyWithFourModulusBytes)
 	}
 }
 
