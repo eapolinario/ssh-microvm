@@ -528,6 +528,16 @@ func waitForPort(addr string, timeout time.Duration) error {
 }
 
 func waitForPortWithDial(addr string, timeout time.Duration, dial func(string, time.Duration) (net.Conn, error)) error {
+	if strings.TrimSpace(addr) == "" {
+		return errors.New("guest port address must be set")
+	}
+	if timeout <= 0 {
+		return errors.New("guest port timeout must be positive")
+	}
+	if dial == nil {
+		return errors.New("guest port dial function must be set")
+	}
+
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
 		dialTimeout := time.Until(deadline)

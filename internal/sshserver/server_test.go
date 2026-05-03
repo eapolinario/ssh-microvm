@@ -625,6 +625,57 @@ func TestWaitForPort(t *testing.T) {
 	})
 }
 
+func TestWaitForPortRejectsInvalidState(t *testing.T) {
+	validDial := func(string, time.Duration) (net.Conn, error) {
+		return nil, errors.New("dial should not be called for invalid state")
+	}
+
+	tests := []struct {
+		name    string
+		addr    string
+		timeout time.Duration
+		dial    func(string, time.Duration) (net.Conn, error)
+		wantErr string
+	}{
+		{
+			name:    "blank address",
+			addr:    " \t ",
+			timeout: time.Second,
+			dial:    validDial,
+			wantErr: "guest port address must be set",
+		},
+		{
+			name:    "zero timeout",
+			addr:    "127.0.0.1:22",
+			timeout: 0,
+			dial:    validDial,
+			wantErr: "guest port timeout must be positive",
+		},
+		{
+			name:    "negative timeout",
+			addr:    "127.0.0.1:22",
+			timeout: -time.Second,
+			dial:    validDial,
+			wantErr: "guest port timeout must be positive",
+		},
+		{
+			name:    "nil dial function",
+			addr:    "127.0.0.1:22",
+			timeout: time.Second,
+			wantErr: "guest port dial function must be set",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := waitForPortWithDial(tt.addr, tt.timeout, tt.dial)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestWaitForPortCapsDialTimeoutToRemainingDeadline(t *testing.T) {
 	var maxDialTimeout time.Duration
 	err := waitForPortWithDial("203.0.113.1:22", 20*time.Millisecond, func(_ string, timeout time.Duration) (net.Conn, error) {
