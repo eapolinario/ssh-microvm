@@ -501,6 +501,9 @@ func (s *Server) proxyToGuest(ch ssh.Channel, ptyReq *ptyRequest, winCh <-chan w
 	if err := s.validateGuestProxy(ch, vm); err != nil {
 		return err
 	}
+	if err := validateGuestPTY(ptyReq); err != nil {
+		return err
+	}
 	if err := validateWindowChanges(winCh); err != nil {
 		return err
 	}
@@ -563,6 +566,19 @@ func (s *Server) validateGuestProxy(ch ssh.Channel, vm *firecracker.VM) error {
 	}
 	if vm == nil {
 		return errors.New("vm not available")
+	}
+	return nil
+}
+
+func validateGuestPTY(ptyReq *ptyRequest) error {
+	if ptyReq == nil {
+		return nil
+	}
+	if strings.TrimSpace(ptyReq.Term) == "" {
+		return errors.New("pty terminal must be set")
+	}
+	if ptyReq.Width <= 0 || ptyReq.Height <= 0 {
+		return errors.New("pty dimensions must be positive")
 	}
 	return nil
 }

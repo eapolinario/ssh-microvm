@@ -610,6 +610,7 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 		name    string
 		server  *Server
 		channel ssh.Channel
+		ptyReq  *ptyRequest
 		winCh   <-chan windowChange
 		shell   bool
 		execCmd string
@@ -648,6 +649,36 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			winCh:   validWinCh,
 			shell:   true,
 			wantErr: "vm not available",
+		},
+		{
+			name:    "blank pty terminal",
+			server:  validServer,
+			channel: validChannel,
+			ptyReq:  &ptyRequest{Term: " \t ", Width: 80, Height: 24},
+			winCh:   validWinCh,
+			shell:   true,
+			vm:      validVM,
+			wantErr: "pty terminal must be set",
+		},
+		{
+			name:    "zero pty width",
+			server:  validServer,
+			channel: validChannel,
+			ptyReq:  &ptyRequest{Term: "xterm", Height: 24},
+			winCh:   validWinCh,
+			shell:   true,
+			vm:      validVM,
+			wantErr: "pty dimensions must be positive",
+		},
+		{
+			name:    "zero pty height",
+			server:  validServer,
+			channel: validChannel,
+			ptyReq:  &ptyRequest{Term: "xterm", Width: 80},
+			winCh:   validWinCh,
+			shell:   true,
+			vm:      validVM,
+			wantErr: "pty dimensions must be positive",
 		},
 		{
 			name:    "nil window change channel",
@@ -725,7 +756,7 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.server.proxyToGuest(tt.channel, nil, tt.winCh, tt.shell, tt.execCmd, tt.vm)
+			err := tt.server.proxyToGuest(tt.channel, tt.ptyReq, tt.winCh, tt.shell, tt.execCmd, tt.vm)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("proxyToGuest error = %v, want containing %q", err, tt.wantErr)
 			}
