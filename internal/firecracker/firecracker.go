@@ -154,10 +154,12 @@ func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
 	select {
 	case <-ctx.Done():
 		_ = v.Cmd.Process.Kill()
+		<-done
 		_ = teardownTap(context.Background(), v.TapName)
 		return ctx.Err()
 	case <-time.After(graceful):
 		_ = v.Cmd.Process.Kill()
+		<-done
 		_ = teardownTap(context.Background(), v.TapName)
 		return errors.New("firecracker shutdown timeout")
 	case err := <-done:

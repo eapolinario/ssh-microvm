@@ -1,6 +1,7 @@
 package firecracker
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -70,6 +71,35 @@ func TestStopAfterProcessAlreadyWaitedDoesNotReturnWaitError(t *testing.T) {
 
 	if err := vm.Stop(context.Background(), time.Second); err != nil {
 		t.Fatalf("Stop returned error for already-waited process: %v", err)
+	}
+}
+
+func TestStopReapsProcessAfterGracefulTimeoutKill(t *testing.T) {
+	cmd := exec.Command("sh", "-c", "trap '' TERM; echo ready; while :; do :; done")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("create helper stdout pipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start helper process: %v", err)
+	}
+	t.Cleanup(func() {
+		if cmd.ProcessState == nil {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	})
+	if line, err := bufio.NewReader(stdout).ReadString('\n'); err != nil || line != "ready\n" {
+		t.Fatalf("wait for helper readiness = %q, %v", line, err)
+	}
+
+	vm := &VM{Cmd: cmd}
+	err = vm.Stop(context.Background(), 20*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "firecracker shutdown timeout") {
+		t.Fatalf("Stop error = %v, want shutdown timeout", err)
+	}
+	if cmd.ProcessState == nil {
+		t.Fatalf("Stop killed the process but did not wait for it")
 	}
 }
 
