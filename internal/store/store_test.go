@@ -130,6 +130,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 15 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 16")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 16: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 16 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -319,6 +326,55 @@ VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2
 	}
 	if gotStartedAt != startedAt {
 		t.Fatalf("session started_at = %q, want %q", gotStartedAt, startedAt)
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionStartTimeFormat(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		sessionID string
+		startedAt string
+	}{
+		{name: "space separated start time", sessionID: "bad-space-start-time", startedAt: "2026-05-03 14:03:32"},
+		{name: "missing timezone start time", sessionID: "bad-missing-timezone-start-time", startedAt: "2026-05-03T14:03:32"},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, tt.sessionID, userID, testKeyFingerprint, "127.0.0.1:2222", tt.startedAt, "active"); err == nil {
+				t.Fatalf("inserted session with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	startedAt := "2026-05-03T14:03:32Z"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2222", startedAt, "active"); err != nil {
+		t.Fatalf("insert valid session: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET started_at = ? WHERE id = ?", "2026-05-03 14:03:32", "session-1"); err == nil {
+		t.Fatalf("updated session to space separated start time, want trigger error")
+	}
+
+	validOffsetTime := "2026-05-03T14:03:32-04:00"
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET started_at = ? WHERE id = ?", validOffsetTime, "session-1"); err != nil {
+		t.Fatalf("updated session to valid offset start time: %v", err)
+	}
+
+	var gotStartedAt string
+	row := st.db.QueryRowContext(ctx, "SELECT started_at FROM sessions WHERE id = ?", "session-1")
+	if err := row.Scan(&gotStartedAt); err != nil {
+		t.Fatalf("query session started_at: %v", err)
+	}
+	if gotStartedAt != validOffsetTime {
+		t.Fatalf("session started_at = %q, want %q", gotStartedAt, validOffsetTime)
 	}
 }
 
