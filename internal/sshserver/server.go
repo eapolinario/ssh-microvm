@@ -285,6 +285,10 @@ func (s *Server) handleSession(ch ssh.Channel, requests <-chan *ssh.Request, vm 
 	}
 
 	for req := range requests {
+		if req == nil {
+			log.Printf("ssh session request rejected: request must be set")
+			continue
+		}
 		switch req.Type {
 		case "pty-req":
 			pty, ok := parsePtyRequest(req.Payload)

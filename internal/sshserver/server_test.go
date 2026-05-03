@@ -742,6 +742,30 @@ func TestHandleSessionRejectsInvalidState(t *testing.T) {
 	}
 }
 
+func TestHandleSessionSkipsNilRequests(t *testing.T) {
+	requests := make(chan *ssh.Request, 1)
+	requests <- nil
+	close(requests)
+	channel := &testSSHChannel{}
+	server := &Server{cfg: &config.Config{}}
+
+	done := make(chan struct{})
+	go func() {
+		server.handleSession(channel, requests, &firecracker.VM{GuestIP: "127.0.0.1"})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Fatalf("handleSession did not return after nil request stream closed")
+	}
+
+	if !channel.closed {
+		t.Fatalf("handleSession did not close channel")
+	}
+}
+
 func TestDialGuestRejectsInvalidState(t *testing.T) {
 	tests := []struct {
 		name    string
