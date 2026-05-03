@@ -411,7 +411,13 @@ func waitForPort(addr string, timeout time.Duration) error {
 			_ = conn.Close()
 			return nil
 		}
-		time.Sleep(200 * time.Millisecond)
+		sleepFor := time.Until(deadline)
+		if sleepFor > 200*time.Millisecond {
+			sleepFor = 200 * time.Millisecond
+		}
+		if sleepFor > 0 {
+			time.Sleep(sleepFor)
+		}
 	}
 	return fmt.Errorf("timeout waiting for %s", addr)
 }

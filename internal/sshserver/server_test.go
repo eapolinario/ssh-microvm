@@ -198,6 +198,41 @@ func TestParseSSHRequestPayloadsRejectInvalidData(t *testing.T) {
 	}
 }
 
+func TestWaitForPort(t *testing.T) {
+	t.Run("ready listener", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = ln.Close()
+		})
+
+		if err := waitForPort(ln.Addr().String(), time.Second); err != nil {
+			t.Fatalf("waitForPort ready listener: %v", err)
+		}
+	})
+
+	t.Run("timeout", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen: %v", err)
+		}
+		addr := ln.Addr().String()
+		if err := ln.Close(); err != nil {
+			t.Fatalf("close listener: %v", err)
+		}
+
+		err = waitForPort(addr, 20*time.Millisecond)
+		if err == nil {
+			t.Fatalf("waitForPort succeeded for closed listener")
+		}
+		if !strings.Contains(err.Error(), "timeout waiting for "+addr) {
+			t.Fatalf("waitForPort error = %q, want timeout for %s", err, addr)
+		}
+	})
+}
+
 func newTestStore(t *testing.T) *store.Store {
 	t.Helper()
 
