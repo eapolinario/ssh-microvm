@@ -619,8 +619,14 @@ func (s *Server) validateGuestDial(guestIP string) error {
 	if strings.TrimSpace(s.cfg.GuestUser) == "" {
 		return errors.New("guest user must be set")
 	}
+	if s.cfg.GuestUser != strings.TrimSpace(s.cfg.GuestUser) {
+		return errors.New("guest user must not contain surrounding whitespace")
+	}
 	if strings.TrimSpace(s.cfg.GuestKeyPath) == "" {
 		return errors.New("guest key path must be set")
+	}
+	if s.cfg.GuestKeyPath != strings.TrimSpace(s.cfg.GuestKeyPath) {
+		return errors.New("guest key path must not contain surrounding whitespace")
 	}
 	return nil
 }

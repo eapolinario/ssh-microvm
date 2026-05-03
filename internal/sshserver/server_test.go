@@ -744,6 +744,15 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			wantErr: "guest user must be set",
 		},
 		{
+			name:    "guest user with surrounding whitespace",
+			server:  &Server{cfg: &config.Config{GuestUser: " root ", GuestKeyPath: "/keys/guest"}},
+			channel: validChannel,
+			winCh:   validWinCh,
+			shell:   true,
+			vm:      validVM,
+			wantErr: "guest user must not contain surrounding whitespace",
+		},
+		{
 			name:    "blank guest key",
 			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: " \t "}},
 			channel: validChannel,
@@ -751,6 +760,15 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			shell:   true,
 			vm:      validVM,
 			wantErr: "guest key path must be set",
+		},
+		{
+			name:    "guest key with surrounding whitespace",
+			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: " /keys/guest "}},
+			channel: validChannel,
+			winCh:   validWinCh,
+			shell:   true,
+			vm:      validVM,
+			wantErr: "guest key path must not contain surrounding whitespace",
 		},
 	}
 
@@ -954,10 +972,22 @@ func TestDialGuestRejectsInvalidState(t *testing.T) {
 			wantErr: "guest user must be set",
 		},
 		{
+			name:    "guest user with surrounding whitespace",
+			server:  &Server{cfg: &config.Config{GuestUser: " root ", GuestKeyPath: "/keys/guest"}},
+			guestIP: "127.0.0.1",
+			wantErr: "guest user must not contain surrounding whitespace",
+		},
+		{
 			name:    "blank guest key",
 			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: " \t "}},
 			guestIP: "127.0.0.1",
 			wantErr: "guest key path must be set",
+		},
+		{
+			name:    "guest key with surrounding whitespace",
+			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: " /keys/guest "}},
+			guestIP: "127.0.0.1",
+			wantErr: "guest key path must not contain surrounding whitespace",
 		},
 	}
 
