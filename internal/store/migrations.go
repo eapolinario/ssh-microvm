@@ -1112,4 +1112,30 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 46,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_vm_id_insert_valid_value
+BEFORE INSERT ON sessions
+WHEN NEW.vm_id IS NOT NULL
+AND (
+	trim(NEW.vm_id, char(9, 10, 11, 12, 13, 32)) = ''
+	OR NEW.vm_id != trim(NEW.vm_id, char(9, 10, 11, 12, 13, 32))
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session VM ID must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_vm_id_update_valid_value
+BEFORE UPDATE OF vm_id ON sessions
+WHEN NEW.vm_id IS NOT NULL
+AND (
+	trim(NEW.vm_id, char(9, 10, 11, 12, 13, 32)) = ''
+	OR NEW.vm_id != trim(NEW.vm_id, char(9, 10, 11, 12, 13, 32))
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session VM ID must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
