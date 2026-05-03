@@ -146,6 +146,11 @@ func TestLoadFromArgsRejectsPaddedStringOverrides(t *testing.T) {
 			wantErr: "--firecracker must not contain surrounding whitespace",
 		},
 		{
+			name:    "padded boot args",
+			args:    requiredArgs("--boot-args", " console=ttyS0 "),
+			wantErr: "--boot-args must not contain surrounding whitespace",
+		},
+		{
 			name:    "padded kernel",
 			args:    requiredArgs("--kernel", " /images/kernel "),
 			wantErr: "--kernel must not contain surrounding whitespace",

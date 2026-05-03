@@ -268,6 +268,13 @@ func TestManagerStartRejectsInvalidConfigBeforeSideEffects(t *testing.T) {
 			wantErr: "graceful shutdown timeout must be > 0",
 		},
 		{
+			name: "boot args with surrounding whitespace",
+			mutate: func(cfg *config.Config) {
+				cfg.BootArgs = " console=ttyS0 "
+			},
+			wantErr: "boot args must not contain surrounding whitespace",
+		},
+		{
 			name: "blank guest ip",
 			mutate: func(cfg *config.Config) {
 				cfg.GuestIP = " \t "

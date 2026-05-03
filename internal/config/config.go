@@ -116,6 +116,9 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if cfg.AuthMode != AuthModeAutoEnroll && cfg.AuthMode != AuthModeKnownKeys {
 		return nil, fmt.Errorf("invalid --auth-mode: %s", cfg.AuthMode)
 	}
+	if !isBlank(cfg.BootArgs) && hasSurroundingWhitespace(cfg.BootArgs) {
+		return nil, errors.New("--boot-args must not contain surrounding whitespace")
+	}
 	if isBlank(cfg.Firecracker) {
 		return nil, errors.New("--firecracker must be set")
 	}

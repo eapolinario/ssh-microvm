@@ -177,6 +177,9 @@ func validateStartConfig(cfg *config.Config) error {
 	if cfg.GracefulStopS <= 0 {
 		return errors.New("graceful shutdown timeout must be > 0")
 	}
+	if strings.TrimSpace(cfg.BootArgs) != "" && cfg.BootArgs != strings.TrimSpace(cfg.BootArgs) {
+		return errors.New("boot args must not contain surrounding whitespace")
+	}
 	if strings.TrimSpace(cfg.GuestIP) == "" {
 		return errors.New("guest IP must be set")
 	}
