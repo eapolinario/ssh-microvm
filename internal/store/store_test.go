@@ -291,6 +291,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 38 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 39")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 39: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 39 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -301,6 +308,52 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("table %s count = %d, want 1", table, count)
 		}
+	}
+}
+
+func TestEnsureSchemaEnforcesUserIDValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	for _, tt := range []struct {
+		name   string
+		userID string
+	}{
+		{name: "blank user ID", userID: " \t "},
+		{name: "padded user ID", userID: " user-1 "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", tt.userID, tt.name, now(), now()); err == nil {
+				t.Fatalf("inserted user with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	userID := "user-1"
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", userID, "alice", now(), now()); err != nil {
+		t.Fatalf("insert valid user: %v", err)
+	}
+	for _, tt := range []struct {
+		name   string
+		userID string
+	}{
+		{name: "blank user ID", userID: "\n\t"},
+		{name: "padded user ID", userID: "\tuser-2\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE users SET id = ? WHERE id = ?", tt.userID, userID); err == nil {
+				t.Fatalf("updated user to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotUserID string
+	row := st.db.QueryRowContext(ctx, "SELECT id FROM users WHERE id = ?", userID)
+	if err := row.Scan(&gotUserID); err != nil {
+		t.Fatalf("query user ID: %v", err)
+	}
+	if gotUserID != userID {
+		t.Fatalf("user id = %q, want %q", gotUserID, userID)
 	}
 }
 

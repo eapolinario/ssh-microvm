@@ -972,4 +972,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 39,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_users_id_insert_valid
+BEFORE INSERT ON users
+WHEN trim(NEW.id, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.id != trim(NEW.id, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'user ID must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_users_id_update_valid
+BEFORE UPDATE OF id ON users
+WHEN trim(NEW.id, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.id != trim(NEW.id, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'user ID must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
