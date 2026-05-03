@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -481,6 +482,12 @@ func TestStopVMRejectsInvalidState(t *testing.T) {
 			server:  validServer,
 			vm:      &firecracker.VM{TapName: "tap/bad"},
 			wantErr: "tap name must contain only ASCII letters and digits",
+		},
+		{
+			name:    "non-positive firecracker process PID",
+			server:  validServer,
+			vm:      &firecracker.VM{Cmd: &exec.Cmd{Process: &os.Process{Pid: 0}}, TapName: "tap/bad"},
+			wantErr: "firecracker process PID must be > 0",
 		},
 	}
 
