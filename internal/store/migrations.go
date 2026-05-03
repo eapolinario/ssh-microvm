@@ -944,4 +944,32 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 38,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_last_seen_at_insert_rfc3339
+BEFORE INSERT ON keys
+WHEN julianday(NEW.last_seen_at) IS NULL
+OR instr(NEW.last_seen_at, 'T') != 11
+OR (
+	substr(NEW.last_seen_at, -1) != 'Z'
+	AND substr(NEW.last_seen_at, -6, 1) NOT IN ('+', '-')
+)
+BEGIN
+	SELECT RAISE(ABORT, 'key last seen time must be a valid RFC3339 timestamp');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_last_seen_at_update_rfc3339
+BEFORE UPDATE OF last_seen_at ON keys
+WHEN julianday(NEW.last_seen_at) IS NULL
+OR instr(NEW.last_seen_at, 'T') != 11
+OR (
+	substr(NEW.last_seen_at, -1) != 'Z'
+	AND substr(NEW.last_seen_at, -6, 1) NOT IN ('+', '-')
+)
+BEGIN
+	SELECT RAISE(ABORT, 'key last seen time must be a valid RFC3339 timestamp');
+END;
+`,
+	},
 }
