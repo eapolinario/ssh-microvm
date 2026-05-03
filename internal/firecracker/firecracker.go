@@ -128,7 +128,10 @@ func (m *Manager) Start(ctx context.Context) (*VM, error) {
 }
 
 func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
-	if v == nil || v.Cmd == nil || v.Cmd.Process == nil {
+	if v == nil {
+		return nil
+	}
+	if v.Cmd == nil || v.Cmd.Process == nil {
 		_ = teardownTap(context.Background(), v.TapName)
 		return nil
 	}
