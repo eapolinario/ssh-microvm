@@ -667,6 +667,16 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			wantErr: "exec command must be set",
 		},
 		{
+			name:    "exec command with shell session",
+			server:  validServer,
+			channel: validChannel,
+			winCh:   validWinCh,
+			shell:   true,
+			execCmd: "echo hi",
+			vm:      validVM,
+			wantErr: "exec command cannot be set for shell sessions",
+		},
+		{
 			name:    "blank guest IP",
 			server:  validServer,
 			channel: validChannel,

@@ -576,6 +576,9 @@ func validateWindowChanges(winCh <-chan windowChange) error {
 
 func validateGuestCommand(shell bool, execCmd string) error {
 	if shell {
+		if strings.TrimSpace(execCmd) != "" {
+			return errors.New("exec command cannot be set for shell sessions")
+		}
 		return nil
 	}
 	if strings.TrimSpace(execCmd) == "" {
