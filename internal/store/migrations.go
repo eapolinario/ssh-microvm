@@ -1942,4 +1942,94 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 56,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_insert_ed25519_blob_length
+BEFORE INSERT ON keys
+BEGIN
+WITH parsed AS (
+	SELECT CASE
+	WHEN instr(NEW.public_key, ' ') > 0
+	AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+	THEN instr(NEW.public_key, ' ')
+	WHEN instr(NEW.public_key, char(9)) > 0
+	THEN instr(NEW.public_key, char(9))
+	ELSE 0
+	END AS first_separator
+),
+fields AS (
+	SELECT CASE
+	WHEN first_separator > 0 THEN substr(NEW.public_key, 1, first_separator - 1)
+	ELSE NEW.public_key
+	END AS key_type,
+	ltrim(substr(NEW.public_key, first_separator + 1), char(9, 32)) AS after_type
+	FROM parsed
+),
+blob AS (
+	SELECT key_type, CASE
+	WHEN instr(after_type, ' ') > 0
+	AND (instr(after_type, char(9)) = 0 OR instr(after_type, ' ') < instr(after_type, char(9)))
+	THEN substr(after_type, 1, instr(after_type, ' ') - 1)
+	WHEN instr(after_type, char(9)) > 0
+	THEN substr(after_type, 1, instr(after_type, char(9)) - 1)
+	ELSE after_type
+	END AS value
+	FROM fields
+)
+SELECT RAISE(ABORT, 'ssh-ed25519 public key blob must be complete')
+FROM blob
+WHERE key_type = 'ssh-ed25519'
+AND value GLOB 'AAAAC3NzaC1lZDI1NTE5*'
+AND value NOT GLOB '*[^A-Za-z0-9+/=]*'
+AND length(value) % 4 = 0
+AND value NOT GLOB '*=[A-Za-z0-9+/]*'
+AND value NOT GLOB '*===*'
+AND length(value) != 68;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_update_ed25519_blob_length
+BEFORE UPDATE OF public_key ON keys
+BEGIN
+WITH parsed AS (
+	SELECT CASE
+	WHEN instr(NEW.public_key, ' ') > 0
+	AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+	THEN instr(NEW.public_key, ' ')
+	WHEN instr(NEW.public_key, char(9)) > 0
+	THEN instr(NEW.public_key, char(9))
+	ELSE 0
+	END AS first_separator
+),
+fields AS (
+	SELECT CASE
+	WHEN first_separator > 0 THEN substr(NEW.public_key, 1, first_separator - 1)
+	ELSE NEW.public_key
+	END AS key_type,
+	ltrim(substr(NEW.public_key, first_separator + 1), char(9, 32)) AS after_type
+	FROM parsed
+),
+blob AS (
+	SELECT key_type, CASE
+	WHEN instr(after_type, ' ') > 0
+	AND (instr(after_type, char(9)) = 0 OR instr(after_type, ' ') < instr(after_type, char(9)))
+	THEN substr(after_type, 1, instr(after_type, ' ') - 1)
+	WHEN instr(after_type, char(9)) > 0
+	THEN substr(after_type, 1, instr(after_type, char(9)) - 1)
+	ELSE after_type
+	END AS value
+	FROM fields
+)
+SELECT RAISE(ABORT, 'ssh-ed25519 public key blob must be complete')
+FROM blob
+WHERE key_type = 'ssh-ed25519'
+AND value GLOB 'AAAAC3NzaC1lZDI1NTE5*'
+AND value NOT GLOB '*[^A-Za-z0-9+/=]*'
+AND length(value) % 4 = 0
+AND value NOT GLOB '*=[A-Za-z0-9+/]*'
+AND value NOT GLOB '*===*'
+AND length(value) != 68;
+END;
+`,
+	},
 }

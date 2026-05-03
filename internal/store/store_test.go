@@ -414,6 +414,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 55 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 56")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 56: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 56 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -1717,6 +1724,66 @@ VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", validWithComment, now(), n
 			}
 			if !strings.Contains(err.Error(), "public key blob must match authorized key type") {
 				t.Fatalf("update key to %s error = %v, want authorized key blob type trigger error", tt.name, err)
+			}
+		})
+	}
+
+	var gotPublicKey string
+	row := st.db.QueryRowContext(ctx, "SELECT public_key FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&gotPublicKey); err != nil {
+		t.Fatalf("query key public_key: %v", err)
+	}
+	if gotPublicKey != validWithTabComment {
+		t.Fatalf("key public_key = %q, want %q", gotPublicKey, validWithTabComment)
+	}
+}
+
+func TestEnsureSchemaEnforcesKeyPublicKeyEd25519BlobLength(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", now(), now()); err != nil {
+		t.Fatalf("insert user fixture: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		publicKey string
+	}{
+		{name: "truncated ed25519 blob", publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA"},
+		{name: "extended ed25519 blob", publicKey: "ssh-ed25519 " + strings.Fields(testAuthorizedKey)[1] + "AAAA"},
+	}
+	for i, tt := range tests {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			fingerprint := testSHA256Fingerprint(byte('A' + i))
+			_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, fingerprint, "user-1", tt.publicKey, now(), now())
+			if err == nil {
+				t.Fatalf("inserted key with %s, want trigger error", tt.name)
+			}
+			if !strings.Contains(err.Error(), "ssh-ed25519 public key blob must be complete") {
+				t.Fatalf("insert key with %s error = %v, want ed25519 blob length trigger error", tt.name, err)
+			}
+		})
+	}
+
+	validWithComment := testAuthorizedKey + " alice@example"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", validWithComment, now(), now()); err != nil {
+		t.Fatalf("insert valid key with comment: %v", err)
+	}
+	validWithTabComment := strings.Replace(testOtherAuthorizedKey, " ", "\t", 1) + "\trotated@example"
+	if _, err := st.db.ExecContext(ctx, "UPDATE keys SET public_key = ? WHERE fingerprint = ?", validWithTabComment, testKeyFingerprint); err != nil {
+		t.Fatalf("update key to valid tab-separated public key with comment: %v", err)
+	}
+	for _, tt := range tests {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			_, err := st.db.ExecContext(ctx, "UPDATE keys SET public_key = ? WHERE fingerprint = ?", tt.publicKey, testKeyFingerprint)
+			if err == nil {
+				t.Fatalf("updated key to %s, want trigger error", tt.name)
+			}
+			if !strings.Contains(err.Error(), "ssh-ed25519 public key blob must be complete") {
+				t.Fatalf("update key to %s error = %v, want ed25519 blob length trigger error", tt.name, err)
 			}
 		})
 	}
