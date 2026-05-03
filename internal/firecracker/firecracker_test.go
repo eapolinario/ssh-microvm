@@ -58,6 +58,21 @@ func TestStopTreatsGracefulSIGTERMAsSuccess(t *testing.T) {
 	}
 }
 
+func TestStopAfterProcessAlreadyWaitedDoesNotReturnWaitError(t *testing.T) {
+	cmd := exec.Command("sh", "-c", "exit 0")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start test process: %v", err)
+	}
+	if err := cmd.Wait(); err != nil {
+		t.Fatalf("wait for test process: %v", err)
+	}
+	vm := &VM{Cmd: cmd}
+
+	if err := vm.Stop(context.Background(), time.Second); err != nil {
+		t.Fatalf("Stop returned error for already-waited process: %v", err)
+	}
+}
+
 func TestBuildBootArgsAddsGuestIPConfiguration(t *testing.T) {
 	cfg := &config.Config{
 		BootArgs: "console=ttyS0 reboot=k panic=1 pci=off",

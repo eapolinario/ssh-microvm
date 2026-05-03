@@ -140,6 +140,10 @@ func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
 		_ = teardownTap(context.Background(), v.TapName)
 		return nil
 	}
+	if v.Cmd.ProcessState != nil {
+		_ = teardownTap(context.Background(), v.TapName)
+		return nil
+	}
 	_ = v.Cmd.Process.Signal(syscall.SIGTERM)
 
 	done := make(chan error, 1)
