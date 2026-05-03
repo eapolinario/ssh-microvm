@@ -277,6 +277,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 36 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 37")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 37: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 37 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -716,6 +723,59 @@ VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", testAuthorizedKey, addedAt
 	}
 	if gotAddedAt != validOffsetTime {
 		t.Fatalf("key added_at = %q, want %q", gotAddedAt, validOffsetTime)
+	}
+}
+
+func TestEnsureSchemaEnforcesKeyLastSeenAtValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", now(), now()); err != nil {
+		t.Fatalf("insert user fixture: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name        string
+		fingerprint string
+		lastSeenAt  string
+	}{
+		{name: "blank last seen time", fingerprint: "bad-blank-last-seen-at", lastSeenAt: " \t "},
+		{name: "padded last seen time", fingerprint: "bad-padded-last-seen-at", lastSeenAt: " " + now() + " "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, tt.fingerprint, "user-1", testAuthorizedKey, now(), tt.lastSeenAt); err == nil {
+				t.Fatalf("inserted key with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	lastSeenAt := now()
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", testAuthorizedKey, now(), lastSeenAt); err != nil {
+		t.Fatalf("insert valid key: %v", err)
+	}
+	for _, tt := range []struct {
+		name       string
+		lastSeenAt string
+	}{
+		{name: "blank last seen time", lastSeenAt: "\n\t"},
+		{name: "padded last seen time", lastSeenAt: "\t" + now() + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE keys SET last_seen_at = ? WHERE fingerprint = ?", tt.lastSeenAt, testKeyFingerprint); err == nil {
+				t.Fatalf("updated key to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotLastSeenAt string
+	row := st.db.QueryRowContext(ctx, "SELECT last_seen_at FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&gotLastSeenAt); err != nil {
+		t.Fatalf("query key last_seen_at: %v", err)
+	}
+	if gotLastSeenAt != lastSeenAt {
+		t.Fatalf("key last_seen_at = %q, want %q", gotLastSeenAt, lastSeenAt)
 	}
 }
 

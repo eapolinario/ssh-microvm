@@ -924,4 +924,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 37,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_last_seen_at_insert_valid
+BEFORE INSERT ON keys
+WHEN trim(NEW.last_seen_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.last_seen_at != trim(NEW.last_seen_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'key last seen time must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_last_seen_at_update_valid
+BEFORE UPDATE OF last_seen_at ON keys
+WHEN trim(NEW.last_seen_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.last_seen_at != trim(NEW.last_seen_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'key last seen time must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
