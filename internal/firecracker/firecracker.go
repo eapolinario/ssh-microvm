@@ -260,11 +260,25 @@ func sanitizeTapNamePart(value string) string {
 
 func waitForSocket(path string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	var lastErr error
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(path); err == nil {
-			return nil
+		info, err := os.Stat(path)
+		if err != nil {
+			lastErr = err
+		} else if info.Mode()&os.ModeSocket == 0 {
+			lastErr = fmt.Errorf("%s exists but is not a unix socket", path)
+		} else {
+			conn, err := net.DialTimeout("unix", path, 50*time.Millisecond)
+			if err == nil {
+				_ = conn.Close()
+				return nil
+			}
+			lastErr = err
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+	if lastErr != nil {
+		return fmt.Errorf("timeout waiting for api socket %s: %w", path, lastErr)
 	}
 	return fmt.Errorf("timeout waiting for api socket: %s", path)
 }

@@ -151,6 +151,17 @@ func TestWaitForSocket(t *testing.T) {
 	}
 }
 
+func TestWaitForSocketRejectsNonSocketPath(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "firecracker.sock")
+	if err := os.WriteFile(socketPath, []byte("not a socket"), 0o600); err != nil {
+		t.Fatalf("write placeholder socket path: %v", err)
+	}
+
+	if err := waitForSocket(socketPath, 20*time.Millisecond); err == nil {
+		t.Fatalf("waitForSocket() succeeded for non-socket path")
+	}
+}
+
 func TestPutJSONOverUnixSocket(t *testing.T) {
 	socketPath := t.TempDir() + "/firecracker.sock"
 	requests := make(chan map[string]any, 1)
