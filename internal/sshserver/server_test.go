@@ -102,6 +102,16 @@ func TestLoadOrCreateHostKeyRejectsWritableParentDirectory(t *testing.T) {
 	}
 }
 
+func TestLoadOrCreateHostKeyRejectsBlankPath(t *testing.T) {
+	_, err := loadOrCreateHostKey(" \t ")
+	if err == nil {
+		t.Fatalf("loadOrCreateHostKey accepted a blank path")
+	}
+	if !strings.Contains(err.Error(), "host key path must be set") {
+		t.Fatalf("loadOrCreateHostKey error = %q, want blank path error", err)
+	}
+}
+
 func TestPublicKeyCallbackAuthModes(t *testing.T) {
 	signer := newTestSigner(t)
 	key := signer.PublicKey()

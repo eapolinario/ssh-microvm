@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -252,6 +253,9 @@ func (s *Server) publicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey) (*s
 }
 
 func loadOrCreateHostKey(path string) (ssh.Signer, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("host key path must be set")
+	}
 	if err := ensureHostKeyDir(filepath.Dir(path)); err != nil {
 		return nil, err
 	}
