@@ -374,4 +374,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 15,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_started_at_insert_valid
+BEFORE INSERT ON sessions
+WHEN trim(NEW.started_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.started_at != trim(NEW.started_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'session start time must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_started_at_update_valid
+BEFORE UPDATE OF started_at ON sessions
+WHEN trim(NEW.started_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.started_at != trim(NEW.started_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'session start time must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }

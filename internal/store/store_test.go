@@ -123,6 +123,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 14 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 15")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 15: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 15 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -258,6 +265,60 @@ VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 
 	}
 	if gotStartedAt != validOffsetTime {
 		t.Fatalf("VM started_at = %q, want %q", gotStartedAt, validOffsetTime)
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionStartTimeValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		sessionID string
+		startedAt string
+	}{
+		{name: "blank start time", sessionID: "bad-blank-start-time", startedAt: " \t "},
+		{name: "padded start time", sessionID: "bad-padded-start-time", startedAt: " " + now() + " "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, tt.sessionID, userID, testKeyFingerprint, "127.0.0.1:2222", tt.startedAt, "active"); err == nil {
+				t.Fatalf("inserted session with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	startedAt := now()
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2222", startedAt, "active"); err != nil {
+		t.Fatalf("insert valid session: %v", err)
+	}
+	for _, tt := range []struct {
+		name      string
+		startedAt string
+	}{
+		{name: "blank start time", startedAt: "\n\t"},
+		{name: "padded start time", startedAt: "\t" + now() + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET started_at = ? WHERE id = ?", tt.startedAt, "session-1"); err == nil {
+				t.Fatalf("updated session to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotStartedAt string
+	row := st.db.QueryRowContext(ctx, "SELECT started_at FROM sessions WHERE id = ?", "session-1")
+	if err := row.Scan(&gotStartedAt); err != nil {
+		t.Fatalf("query session started_at: %v", err)
+	}
+	if gotStartedAt != startedAt {
+		t.Fatalf("session started_at = %q, want %q", gotStartedAt, startedAt)
 	}
 }
 
