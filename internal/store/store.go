@@ -315,6 +315,9 @@ func (s *Store) EndVM(ctx context.Context, vmID string, exitStatus int) error {
 	if hasSurroundingWhitespace(vmID) {
 		return errors.New("VM ID must not contain surrounding whitespace")
 	}
+	if exitStatus < 0 {
+		return errors.New("VM exit status must be >= 0")
+	}
 	return execOne(ctx, s.db, `UPDATE vms SET ended_at = ?, exit_status = ? WHERE id = ?`, now(), exitStatus, vmID)
 }
 
