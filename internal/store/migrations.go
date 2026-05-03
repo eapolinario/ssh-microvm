@@ -215,4 +215,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 9,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_completion_insert_consistent
+BEFORE INSERT ON sessions
+WHEN (NEW.status = 'active' AND NEW.ended_at IS NOT NULL)
+OR (NEW.status IN ('closed', 'vm_failed') AND NEW.ended_at IS NULL)
+BEGIN
+	SELECT RAISE(ABORT, 'session ended_at must match terminal status');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_completion_update_consistent
+BEFORE UPDATE OF status, ended_at ON sessions
+WHEN (NEW.status = 'active' AND NEW.ended_at IS NOT NULL)
+OR (NEW.status IN ('closed', 'vm_failed') AND NEW.ended_at IS NULL)
+BEGIN
+	SELECT RAISE(ABORT, 'session ended_at must match terminal status');
+END;
+`,
+	},
 }

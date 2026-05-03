@@ -81,6 +81,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 8 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 9")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 9: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 9 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -197,6 +204,63 @@ VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 
 	}
 	if !gotExitStatus.Valid || gotExitStatus.Int64 != 0 {
 		t.Fatalf("VM exit_status = %v, want 0", gotExitStatus)
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionCompletionConsistency(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, ended_at, status)
+VALUES(?, ?, ?, ?, ?, ?, ?)`, "active-ended-session", userID, testKeyFingerprint, "127.0.0.1:2222", now(), now(), "active"); err == nil {
+		t.Fatalf("inserted active session with ended_at, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "closed-without-ended-session", userID, testKeyFingerprint, "127.0.0.1:2222", now(), "closed"); err == nil {
+		t.Fatalf("inserted closed session without ended_at, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "failed-without-ended-session", userID, testKeyFingerprint, "127.0.0.1:2223", now(), "vm_failed"); err == nil {
+		t.Fatalf("inserted vm_failed session without ended_at, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2224", now(), "active"); err != nil {
+		t.Fatalf("insert valid active session: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET ended_at = ? WHERE id = ?", now(), "session-1"); err == nil {
+		t.Fatalf("updated active session ended_at without terminal status, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET status = ? WHERE id = ?", "closed", "session-1"); err == nil {
+		t.Fatalf("updated session to terminal status without ended_at, want trigger error")
+	}
+
+	endedAt := now()
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?", endedAt, "closed", "session-1"); err != nil {
+		t.Fatalf("complete session consistently: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET ended_at = NULL WHERE id = ?", "session-1"); err == nil {
+		t.Fatalf("cleared ended_at for terminal session, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET status = ? WHERE id = ?", "active", "session-1"); err == nil {
+		t.Fatalf("reopened session without clearing ended_at, want trigger error")
+	}
+
+	var gotEndedAt sql.NullString
+	var gotStatus string
+	row := st.db.QueryRowContext(ctx, "SELECT ended_at, status FROM sessions WHERE id = ?", "session-1")
+	if err := row.Scan(&gotEndedAt, &gotStatus); err != nil {
+		t.Fatalf("query session completion: %v", err)
+	}
+	if !gotEndedAt.Valid || gotEndedAt.String != endedAt {
+		t.Fatalf("session ended_at = %v, want %q", gotEndedAt, endedAt)
+	}
+	if gotStatus != "closed" {
+		t.Fatalf("session status = %q, want closed", gotStatus)
 	}
 }
 
