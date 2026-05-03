@@ -378,6 +378,26 @@ func TestLoadOrCreateHostKeyRejectsBlankPath(t *testing.T) {
 	}
 }
 
+func TestLoadOrCreateHostKeyRejectsPathWithSurroundingWhitespaceBeforeSideEffects(t *testing.T) {
+	workDir := t.TempDir()
+	t.Chdir(workDir)
+
+	_, err := loadOrCreateHostKey(" " + filepath.Join(workDir, "ssh_host_ed25519") + " ")
+	if err == nil {
+		t.Fatalf("loadOrCreateHostKey accepted path with surrounding whitespace")
+	}
+	if !strings.Contains(err.Error(), "host key path must not contain surrounding whitespace") {
+		t.Fatalf("loadOrCreateHostKey error = %q, want surrounding whitespace error", err)
+	}
+	entries, readErr := os.ReadDir(workDir)
+	if readErr != nil {
+		t.Fatalf("read work dir: %v", readErr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("loadOrCreateHostKey created filesystem entries before validating path: %v", entries)
+	}
+}
+
 func TestPublicKeyCallbackAuthModes(t *testing.T) {
 	signer := newTestSigner(t)
 	key := signer.PublicKey()
