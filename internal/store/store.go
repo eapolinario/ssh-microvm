@@ -147,13 +147,11 @@ VALUES(?, ?, ?, ?, ?, ?)`, session.ID, session.UserID, session.KeyFingerprint, s
 }
 
 func (s *Store) EndSession(ctx context.Context, sessionID, status string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?`, now(), status, sessionID)
-	return err
+	return execOne(ctx, s.db, `UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?`, now(), status, sessionID)
 }
 
 func (s *Store) AttachVM(ctx context.Context, sessionID, vmID string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET vm_id = ? WHERE id = ?`, vmID, sessionID)
-	return err
+	return execOne(ctx, s.db, `UPDATE sessions SET vm_id = ? WHERE id = ? AND EXISTS (SELECT 1 FROM vms WHERE id = ?)`, vmID, sessionID, vmID)
 }
 
 func (s *Store) CreateVM(ctx context.Context, vm VM) error {
@@ -163,8 +161,7 @@ VALUES(?, ?, ?, ?, ?)`, vm.ID, vm.SessionID, vm.StateDir, vm.FCPid, vm.StartedAt
 }
 
 func (s *Store) EndVM(ctx context.Context, vmID string, exitStatus int) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE vms SET ended_at = ?, exit_status = ? WHERE id = ?`, now(), exitStatus, vmID)
-	return err
+	return execOne(ctx, s.db, `UPDATE vms SET ended_at = ?, exit_status = ? WHERE id = ?`, now(), exitStatus, vmID)
 }
 
 func (s *Store) Audit(ctx context.Context, eventType, dataJSON string) error {
@@ -175,4 +172,23 @@ VALUES(?, ?, ?, ?)`, newID(), eventType, dataJSON, now())
 
 func now() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
+}
+
+type execer interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func execOne(ctx context.Context, db execer, query string, args ...any) error {
+	result, err := db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }

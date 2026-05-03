@@ -157,6 +157,55 @@ func TestCreateSessionRequiresExistingUserAndKey(t *testing.T) {
 	}
 }
 
+func TestLifecycleUpdatesRequireExistingRecords(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if err := st.EndSession(ctx, "missing-session", "closed"); err != sql.ErrNoRows {
+		t.Fatalf("EndSession missing record error = %v, want sql.ErrNoRows", err)
+	}
+	if err := st.EndVM(ctx, "missing-vm", 0); err != sql.ErrNoRows {
+		t.Fatalf("EndVM missing record error = %v, want sql.ErrNoRows", err)
+	}
+	if err := st.AttachVM(ctx, "missing-session", "missing-vm"); err != sql.ErrNoRows {
+		t.Fatalf("AttachVM missing records error = %v, want sql.ErrNoRows", err)
+	}
+}
+
+func TestAttachVMRequiresExistingVM(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	if err := st.AttachVM(ctx, session.ID, "missing-vm"); err != sql.ErrNoRows {
+		t.Fatalf("AttachVM missing VM error = %v, want sql.ErrNoRows", err)
+	}
+
+	var attachedVM sql.NullString
+	row := st.db.QueryRowContext(ctx, "SELECT vm_id FROM sessions WHERE id = ?", session.ID)
+	if err := row.Scan(&attachedVM); err != nil {
+		t.Fatalf("query session vm_id: %v", err)
+	}
+	if attachedVM.Valid {
+		t.Fatalf("AttachVM set vm_id to %q for missing VM", attachedVM.String)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 
