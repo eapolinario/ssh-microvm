@@ -306,4 +306,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 12,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_vms_state_dir_insert_valid
+BEFORE INSERT ON vms
+WHEN trim(NEW.state_dir, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.state_dir != trim(NEW.state_dir, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'VM state directory must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_state_dir_update_valid
+BEFORE UPDATE OF state_dir ON vms
+WHEN trim(NEW.state_dir, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.state_dir != trim(NEW.state_dir, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'VM state directory must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }

@@ -102,6 +102,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 11 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 12")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 12: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 12 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -112,6 +119,70 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("table %s count = %d, want 1", table, count)
 		}
+	}
+}
+
+func TestEnsureSchemaEnforcesVMStateDirectoryValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: testKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name     string
+		stateDir string
+	}{
+		{name: "blank state directory", stateDir: " \t "},
+		{name: "padded state directory", stateDir: " " + filepath.Join(t.TempDir(), "bad-vm") + " "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "bad-"+tt.name, session.ID, tt.stateDir, 1234, now()); err == nil {
+				t.Fatalf("inserted VM with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	stateDir := filepath.Join(t.TempDir(), "vm-1")
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, stateDir, 1234, now()); err != nil {
+		t.Fatalf("insert valid VM: %v", err)
+	}
+	for _, tt := range []struct {
+		name     string
+		stateDir string
+	}{
+		{name: "blank state directory", stateDir: "\n\t"},
+		{name: "padded state directory", stateDir: "\t" + filepath.Join(t.TempDir(), "bad-vm") + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE vms SET state_dir = ? WHERE id = ?", tt.stateDir, "vm-1"); err == nil {
+				t.Fatalf("updated VM to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotStateDir string
+	row := st.db.QueryRowContext(ctx, "SELECT state_dir FROM vms WHERE id = ?", "vm-1")
+	if err := row.Scan(&gotStateDir); err != nil {
+		t.Fatalf("query VM state_dir: %v", err)
+	}
+	if gotStateDir != stateDir {
+		t.Fatalf("VM state_dir = %q, want %q", gotStateDir, stateDir)
 	}
 }
 
