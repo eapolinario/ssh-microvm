@@ -856,4 +856,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 34,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_insert_valid
+BEFORE INSERT ON keys
+WHEN trim(NEW.public_key, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.public_key != trim(NEW.public_key, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'public key must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_update_valid
+BEFORE UPDATE OF public_key ON keys
+WHEN trim(NEW.public_key, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.public_key != trim(NEW.public_key, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'public key must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }

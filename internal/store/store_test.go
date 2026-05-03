@@ -256,6 +256,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 33 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 34")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 34: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 34 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -542,6 +549,58 @@ VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", testAuthorizedKey, now(), 
 	}
 	if gotFingerprint != testKeyFingerprint {
 		t.Fatalf("key fingerprint = %q, want %q", gotFingerprint, testKeyFingerprint)
+	}
+}
+
+func TestEnsureSchemaEnforcesKeyPublicKeyValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", now(), now()); err != nil {
+		t.Fatalf("insert user fixture: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		publicKey string
+	}{
+		{name: "blank public key", publicKey: " \t "},
+		{name: "padded public key", publicKey: " " + testAuthorizedKey + "\n"},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			fingerprint := "insert-" + strings.ReplaceAll(tt.name, " ", "-")
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, fingerprint, "user-1", tt.publicKey, now(), now()); err == nil {
+				t.Fatalf("inserted key with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", testAuthorizedKey, now(), now()); err != nil {
+		t.Fatalf("insert valid key: %v", err)
+	}
+	for _, tt := range []struct {
+		name      string
+		publicKey string
+	}{
+		{name: "blank public key", publicKey: "\n\t"},
+		{name: "padded public key", publicKey: "\t" + testOtherAuthorizedKey + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE keys SET public_key = ? WHERE fingerprint = ?", tt.publicKey, testKeyFingerprint); err == nil {
+				t.Fatalf("updated key to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotPublicKey string
+	row := st.db.QueryRowContext(ctx, "SELECT public_key FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&gotPublicKey); err != nil {
+		t.Fatalf("query key public_key: %v", err)
+	}
+	if gotPublicKey != testAuthorizedKey {
+		t.Fatalf("key public_key = %q, want %q", gotPublicKey, testAuthorizedKey)
 	}
 }
 
