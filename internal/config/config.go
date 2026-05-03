@@ -131,6 +131,9 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if !sameIPv4Slash24(cfg.GuestIP, cfg.HostIP) {
 		return nil, errors.New("--guest-ip and --host-ip must be in the same /24 network")
 	}
+	if !hasTapPrefixChars(cfg.TapPrefix) {
+		return nil, errors.New("--tap-prefix must contain at least one ASCII letter or digit")
+	}
 
 	return cfg, nil
 }
@@ -168,6 +171,15 @@ func sameIPv4Slash24(a, b string) bool {
 		return false
 	}
 	return ipA[0] == ipB[0] && ipA[1] == ipB[1] && ipA[2] == ipB[2]
+}
+
+func hasTapPrefixChars(value string) bool {
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			return true
+		}
+	}
+	return false
 }
 
 func validateListenAddr(value string) error {

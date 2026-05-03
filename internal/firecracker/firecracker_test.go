@@ -267,6 +267,20 @@ func TestManagerStartRejectsInvalidConfigBeforeSideEffects(t *testing.T) {
 			},
 			wantErr: "guest IP and host IP must be in the same /24 network",
 		},
+		{
+			name: "blank tap prefix",
+			mutate: func(cfg *config.Config) {
+				cfg.TapPrefix = " \t "
+			},
+			wantErr: "tap prefix must contain at least one ASCII letter or digit",
+		},
+		{
+			name: "tap prefix without usable characters",
+			mutate: func(cfg *config.Config) {
+				cfg.TapPrefix = "---:://"
+			},
+			wantErr: "tap prefix must contain at least one ASCII letter or digit",
+		},
 	}
 
 	for _, tt := range tests {

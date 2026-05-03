@@ -302,6 +302,16 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			args:    requiredArgs("--guest-ip", "172.16.1.2", "--host-ip", "172.16.0.1"),
 			wantErr: "--guest-ip and --host-ip must be in the same /24 network",
 		},
+		{
+			name:    "blank tap prefix",
+			args:    requiredArgs("--tap-prefix", " \t "),
+			wantErr: "--tap-prefix must contain at least one ASCII letter or digit",
+		},
+		{
+			name:    "tap prefix without usable characters",
+			args:    requiredArgs("--tap-prefix", "---:://"),
+			wantErr: "--tap-prefix must contain at least one ASCII letter or digit",
+		},
 	}
 
 	for _, tt := range tests {
