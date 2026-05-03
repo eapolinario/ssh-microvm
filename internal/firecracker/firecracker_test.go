@@ -319,6 +319,13 @@ func TestTapCommandHelpersRejectInvalidState(t *testing.T) {
 			wantErr: "context must be set",
 		},
 		{
+			name: "teardownTap blank tap name",
+			run: func() error {
+				return teardownTap(context.Background(), " \t ")
+			},
+			wantErr: "tap name is empty",
+		},
+		{
 			name: "runCmd nil context",
 			run: func() error {
 				return runCmd(nil, "true")

@@ -257,11 +257,11 @@ func setupTap(ctx context.Context, tapName, hostIP string) error {
 }
 
 func teardownTap(ctx context.Context, tapName string) error {
-	if strings.TrimSpace(tapName) == "" {
-		return nil
-	}
 	if ctx == nil {
 		return errors.New("context must be set")
+	}
+	if strings.TrimSpace(tapName) == "" {
+		return errors.New("tap name is empty")
 	}
 	return runCmd(ctx, "sudo", "ip", "link", "del", tapName)
 }
