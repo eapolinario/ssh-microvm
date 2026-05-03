@@ -669,6 +669,7 @@ func TestHandleSessionRejectsInvalidState(t *testing.T) {
 
 	tests := []struct {
 		name       string
+		server     *Server
 		channel    *testSSHChannel
 		requests   <-chan *ssh.Request
 		vm         *firecracker.VM
@@ -676,17 +677,35 @@ func TestHandleSessionRejectsInvalidState(t *testing.T) {
 	}{
 		{
 			name:     "nil channel",
+			server:   &Server{cfg: &config.Config{}},
 			requests: validRequests,
 			vm:       validVM,
 		},
 		{
+			name:       "nil server",
+			channel:    &testSSHChannel{},
+			requests:   validRequests,
+			vm:         validVM,
+			wantClosed: true,
+		},
+		{
+			name:       "nil config",
+			server:     &Server{},
+			channel:    &testSSHChannel{},
+			requests:   validRequests,
+			vm:         validVM,
+			wantClosed: true,
+		},
+		{
 			name:       "nil requests",
+			server:     &Server{cfg: &config.Config{}},
 			channel:    &testSSHChannel{},
 			vm:         validVM,
 			wantClosed: true,
 		},
 		{
 			name:       "nil VM",
+			server:     &Server{cfg: &config.Config{}},
 			channel:    &testSSHChannel{},
 			requests:   validRequests,
 			wantClosed: true,
@@ -697,7 +716,7 @@ func TestHandleSessionRejectsInvalidState(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			done := make(chan struct{})
 			go func() {
-				(&Server{}).handleSession(tt.channel, tt.requests, tt.vm)
+				tt.server.handleSession(tt.channel, tt.requests, tt.vm)
 				close(done)
 			}()
 

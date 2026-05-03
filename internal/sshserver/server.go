@@ -247,6 +247,14 @@ func (s *Server) handleSession(ch ssh.Channel, requests <-chan *ssh.Request, vm 
 		return
 	}
 	defer ch.Close()
+	if s == nil {
+		log.Printf("ssh session rejected: server must be set")
+		return
+	}
+	if s.cfg == nil {
+		log.Printf("ssh session rejected: config must be set")
+		return
+	}
 	if requests == nil {
 		log.Printf("ssh session rejected: requests must be set")
 		return
