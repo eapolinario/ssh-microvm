@@ -404,9 +404,19 @@ func (s *Server) dialGuest(guestIP string) (*ssh.Client, error) {
 }
 
 func waitForPort(addr string, timeout time.Duration) error {
+	return waitForPortWithDial(addr, timeout, func(addr string, timeout time.Duration) (net.Conn, error) {
+		return net.DialTimeout("tcp", addr, timeout)
+	})
+}
+
+func waitForPortWithDial(addr string, timeout time.Duration, dial func(string, time.Duration) (net.Conn, error)) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+		dialTimeout := time.Until(deadline)
+		if dialTimeout > 500*time.Millisecond {
+			dialTimeout = 500 * time.Millisecond
+		}
+		conn, err := dial(addr, dialTimeout)
 		if err == nil {
 			_ = conn.Close()
 			return nil

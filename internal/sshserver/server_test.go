@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -231,6 +232,23 @@ func TestWaitForPort(t *testing.T) {
 			t.Fatalf("waitForPort error = %q, want timeout for %s", err, addr)
 		}
 	})
+}
+
+func TestWaitForPortCapsDialTimeoutToRemainingDeadline(t *testing.T) {
+	var maxDialTimeout time.Duration
+	err := waitForPortWithDial("203.0.113.1:22", 20*time.Millisecond, func(_ string, timeout time.Duration) (net.Conn, error) {
+		if timeout > maxDialTimeout {
+			maxDialTimeout = timeout
+		}
+		time.Sleep(timeout)
+		return nil, errors.New("dial timeout")
+	})
+	if err == nil {
+		t.Fatalf("waitForPortWithDial succeeded, want timeout")
+	}
+	if maxDialTimeout > 20*time.Millisecond {
+		t.Fatalf("dial timeout = %v, want capped to remaining deadline", maxDialTimeout)
+	}
 }
 
 func newTestStore(t *testing.T) *store.Store {
