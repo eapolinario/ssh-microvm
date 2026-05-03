@@ -1912,4 +1912,34 @@ END;
 END;
 `,
 	},
+	{
+		version: 55,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_fingerprint_insert_sha256
+BEFORE INSERT ON keys
+WHEN trim(NEW.fingerprint, char(9, 10, 11, 12, 13, 32)) != ''
+AND NEW.fingerprint = trim(NEW.fingerprint, char(9, 10, 11, 12, 13, 32))
+AND (
+	length(NEW.fingerprint) != 50
+	OR substr(NEW.fingerprint, 1, 7) != 'SHA256:'
+	OR substr(NEW.fingerprint, 8) GLOB '*[^A-Za-z0-9+/]*'
+)
+BEGIN
+	SELECT RAISE(ABORT, 'key fingerprint must be a SHA256 fingerprint');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_fingerprint_update_sha256
+BEFORE UPDATE OF fingerprint ON keys
+WHEN trim(NEW.fingerprint, char(9, 10, 11, 12, 13, 32)) != ''
+AND NEW.fingerprint = trim(NEW.fingerprint, char(9, 10, 11, 12, 13, 32))
+AND (
+	length(NEW.fingerprint) != 50
+	OR substr(NEW.fingerprint, 1, 7) != 'SHA256:'
+	OR substr(NEW.fingerprint, 8) GLOB '*[^A-Za-z0-9+/]*'
+)
+BEGIN
+	SELECT RAISE(ABORT, 'key fingerprint must be a SHA256 fingerprint');
+END;
+`,
+	},
 }

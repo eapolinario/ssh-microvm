@@ -16,6 +16,10 @@ const (
 	testOtherKeyFingerprint = "SHA256:dGAIKjPAvDNRn2eUYFTajUJGNHzLaUHgJsFOfgFzlyI"
 )
 
+func testSHA256Fingerprint(suffix byte) string {
+	return "SHA256:" + strings.Repeat("A", 42) + string(suffix)
+}
+
 func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -402,6 +406,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	}
 	if migrationCount != 1 {
 		t.Fatalf("version 54 migration count = %d, want 1", migrationCount)
+	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 55")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 55: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 55 migration count = %d, want 1", migrationCount)
 	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
@@ -1199,7 +1210,7 @@ VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", testAuthorizedKey, now(), 
 	}
 }
 
-func TestEnsureSchemaEnforcesKeyPublicKeyValues(t *testing.T) {
+func TestEnsureSchemaEnforcesKeyFingerprintSHA256Shape(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
@@ -1208,6 +1219,70 @@ func TestEnsureSchemaEnforcesKeyPublicKeyValues(t *testing.T) {
 	}
 
 	for _, tt := range []struct {
+		name        string
+		fingerprint string
+	}{
+		{name: "missing SHA256 prefix", fingerprint: "MD5:UecLtXI8mKCwPSeFNoPFanZ4gYYgIREcsLQBav+pqAg"},
+		{name: "short SHA256 fingerprint", fingerprint: "SHA256:short"},
+		{name: "invalid SHA256 character", fingerprint: "SHA256:UecLtXI8mKCwPSeFNoPFanZ4gYYgIREcsLQBav+pqA="},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, tt.fingerprint, "user-1", testAuthorizedKey, now(), now())
+			if err == nil {
+				t.Fatalf("inserted key with %s, want trigger error", tt.name)
+			}
+			if !strings.Contains(err.Error(), "key fingerprint must be a SHA256 fingerprint") {
+				t.Fatalf("insert key with %s error = %v, want SHA256 fingerprint trigger error", tt.name, err)
+			}
+		})
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", testAuthorizedKey, now(), now()); err != nil {
+		t.Fatalf("insert valid key: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE keys SET fingerprint = ? WHERE fingerprint = ?", testOtherKeyFingerprint, testKeyFingerprint); err != nil {
+		t.Fatalf("update key to valid SHA256 fingerprint: %v", err)
+	}
+	for _, tt := range []struct {
+		name        string
+		fingerprint string
+	}{
+		{name: "missing SHA256 prefix", fingerprint: "MD5:dGAIKjPAvDNRn2eUYFTajUJGNHzLaUHgJsFOfgFzlyI"},
+		{name: "short SHA256 fingerprint", fingerprint: "SHA256:short"},
+		{name: "invalid SHA256 character", fingerprint: "SHA256:dGAIKjPAvDNRn2eUYFTajUJGNHzLaUHgJsFOfgFzly="},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			_, err := st.db.ExecContext(ctx, "UPDATE keys SET fingerprint = ? WHERE fingerprint = ?", tt.fingerprint, testOtherKeyFingerprint)
+			if err == nil {
+				t.Fatalf("updated key to %s, want trigger error", tt.name)
+			}
+			if !strings.Contains(err.Error(), "key fingerprint must be a SHA256 fingerprint") {
+				t.Fatalf("update key to %s error = %v, want SHA256 fingerprint trigger error", tt.name, err)
+			}
+		})
+	}
+
+	var gotFingerprint string
+	row := st.db.QueryRowContext(ctx, "SELECT fingerprint FROM keys WHERE fingerprint = ?", testOtherKeyFingerprint)
+	if err := row.Scan(&gotFingerprint); err != nil {
+		t.Fatalf("query key fingerprint: %v", err)
+	}
+	if gotFingerprint != testOtherKeyFingerprint {
+		t.Fatalf("key fingerprint = %q, want %q", gotFingerprint, testOtherKeyFingerprint)
+	}
+}
+
+func TestEnsureSchemaEnforcesKeyPublicKeyValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", now(), now()); err != nil {
+		t.Fatalf("insert user fixture: %v", err)
+	}
+
+	for i, tt := range []struct {
 		name      string
 		publicKey string
 	}{
@@ -1215,7 +1290,7 @@ func TestEnsureSchemaEnforcesKeyPublicKeyValues(t *testing.T) {
 		{name: "padded public key", publicKey: " " + testAuthorizedKey + "\n"},
 	} {
 		t.Run("insert "+tt.name, func(t *testing.T) {
-			fingerprint := "insert-" + strings.ReplaceAll(tt.name, " ", "-")
+			fingerprint := testSHA256Fingerprint(byte('A' + i))
 			if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
 VALUES(?, ?, ?, ?, ?)`, fingerprint, "user-1", tt.publicKey, now(), now()); err == nil {
 				t.Fatalf("inserted key with %s, want trigger error", tt.name)
@@ -1266,9 +1341,9 @@ func TestEnsureSchemaEnforcesKeyPublicKeySingleLine(t *testing.T) {
 		{name: "line-feed separated public keys", publicKey: testAuthorizedKey + "\n" + testOtherAuthorizedKey},
 		{name: "carriage-return separated public keys", publicKey: testAuthorizedKey + "\r" + testOtherAuthorizedKey},
 	}
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run("insert "+tt.name, func(t *testing.T) {
-			fingerprint := "insert-" + strings.ReplaceAll(tt.name, " ", "-")
+			fingerprint := testSHA256Fingerprint(byte('A' + i))
 			_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
 VALUES(?, ?, ?, ?, ?)`, fingerprint, "user-1", tt.publicKey, now(), now())
 			if err == nil {
@@ -1321,9 +1396,9 @@ func TestEnsureSchemaEnforcesKeyPublicKeyAuthorizedKeyFields(t *testing.T) {
 		{name: "single token public key", publicKey: "ssh-ed25519"},
 		{name: "plain text public key", publicKey: "not-an-authorized-key"},
 	}
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run("insert "+tt.name, func(t *testing.T) {
-			fingerprint := "insert-" + strings.ReplaceAll(tt.name, " ", "-")
+			fingerprint := testSHA256Fingerprint(byte('A' + i))
 			_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
 VALUES(?, ?, ?, ?, ?)`, fingerprint, "user-1", tt.publicKey, now(), now())
 			if err == nil {
@@ -1376,9 +1451,9 @@ func TestEnsureSchemaEnforcesKeyPublicKeyAuthorizedKeyType(t *testing.T) {
 		{name: "plain text first field", publicKey: "not-an-authorized-key AAAA"},
 		{name: "unknown key type", publicKey: "rsa AAAA"},
 	}
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run("insert "+tt.name, func(t *testing.T) {
-			fingerprint := "insert-" + strings.ReplaceAll(tt.name, " ", "-")
+			fingerprint := testSHA256Fingerprint(byte('A' + i))
 			_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
 VALUES(?, ?, ?, ?, ?)`, fingerprint, "user-1", tt.publicKey, now(), now())
 			if err == nil {
@@ -1431,9 +1506,9 @@ func TestEnsureSchemaEnforcesKeyPublicKeyAuthorizedKeyBlob(t *testing.T) {
 		{name: "short key blob", publicKey: "ssh-ed25519 AAAA"},
 		{name: "non-base64 key blob", publicKey: "ssh-ed25519 !!!!"},
 	}
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run("insert "+tt.name, func(t *testing.T) {
-			fingerprint := "insert-" + strings.ReplaceAll(tt.name, " ", "-")
+			fingerprint := testSHA256Fingerprint(byte('A' + i))
 			_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
 VALUES(?, ?, ?, ?, ?)`, fingerprint, "user-1", tt.publicKey, now(), now())
 			if err == nil {
@@ -1490,9 +1565,9 @@ func TestEnsureSchemaEnforcesKeyPublicKeyAuthorizedKeyBlobCharacters(t *testing.
 		{name: "invalid character after valid prefix", publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5!!!!"},
 		{name: "invalid character before comment", publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5!!!! comment"},
 	}
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run("insert "+tt.name, func(t *testing.T) {
-			fingerprint := "insert-" + strings.ReplaceAll(tt.name, " ", "-")
+			fingerprint := testSHA256Fingerprint(byte('A' + i))
 			_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
 VALUES(?, ?, ?, ?, ?)`, fingerprint, "user-1", tt.publicKey, now(), now())
 			if err == nil {
@@ -1550,9 +1625,9 @@ func TestEnsureSchemaEnforcesKeyPublicKeyAuthorizedKeyBlobBase64Shape(t *testing
 		{name: "blob length not multiple of four", publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5A"},
 		{name: "padding before blob end", publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5=AAA"},
 	}
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run("insert "+tt.name, func(t *testing.T) {
-			fingerprint := "insert-" + strings.ReplaceAll(tt.name, " ", "-")
+			fingerprint := testSHA256Fingerprint(byte('A' + i))
 			_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
 VALUES(?, ?, ?, ?, ?)`, fingerprint, "user-1", tt.publicKey, now(), now())
 			if err == nil {
@@ -1611,9 +1686,9 @@ func TestEnsureSchemaEnforcesKeyPublicKeyAuthorizedKeyBlobType(t *testing.T) {
 		{name: "blob with no encoded key type", publicKey: "ssh-ed25519 AAAAAAAAAAAAAAAA"},
 		{name: "blob type does not match first field", publicKey: "ssh-rsa " + ed25519Blob},
 	}
-	for _, tt := range tests {
+	for i, tt := range tests {
 		t.Run("insert "+tt.name, func(t *testing.T) {
-			fingerprint := "insert-" + strings.ReplaceAll(tt.name, " ", "-")
+			fingerprint := testSHA256Fingerprint(byte('A' + i))
 			_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
 VALUES(?, ?, ?, ?, ?)`, fingerprint, "user-1", tt.publicKey, now(), now())
 			if err == nil {
@@ -1669,8 +1744,8 @@ func TestEnsureSchemaEnforcesKeyAddedAtValues(t *testing.T) {
 		fingerprint string
 		addedAt     string
 	}{
-		{name: "blank addition time", fingerprint: "bad-blank-added-at", addedAt: " \t "},
-		{name: "padded addition time", fingerprint: "bad-padded-added-at", addedAt: " " + now() + " "},
+		{name: "blank addition time", fingerprint: testSHA256Fingerprint('A'), addedAt: " \t "},
+		{name: "padded addition time", fingerprint: testSHA256Fingerprint('B'), addedAt: " " + now() + " "},
 	} {
 		t.Run("insert "+tt.name, func(t *testing.T) {
 			if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
@@ -1722,8 +1797,8 @@ func TestEnsureSchemaEnforcesKeyAddedAtFormat(t *testing.T) {
 		fingerprint string
 		addedAt     string
 	}{
-		{name: "space separated addition time", fingerprint: "bad-space-added-at", addedAt: "2026-05-03 14:03:32"},
-		{name: "missing timezone addition time", fingerprint: "bad-missing-timezone-added-at", addedAt: "2026-05-03T14:03:32"},
+		{name: "space separated addition time", fingerprint: testSHA256Fingerprint('C'), addedAt: "2026-05-03 14:03:32"},
+		{name: "missing timezone addition time", fingerprint: testSHA256Fingerprint('D'), addedAt: "2026-05-03T14:03:32"},
 	} {
 		t.Run("insert "+tt.name, func(t *testing.T) {
 			if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
@@ -1770,8 +1845,8 @@ func TestEnsureSchemaEnforcesKeyLastSeenAtValues(t *testing.T) {
 		fingerprint string
 		lastSeenAt  string
 	}{
-		{name: "blank last seen time", fingerprint: "bad-blank-last-seen-at", lastSeenAt: " \t "},
-		{name: "padded last seen time", fingerprint: "bad-padded-last-seen-at", lastSeenAt: " " + now() + " "},
+		{name: "blank last seen time", fingerprint: testSHA256Fingerprint('E'), lastSeenAt: " \t "},
+		{name: "padded last seen time", fingerprint: testSHA256Fingerprint('F'), lastSeenAt: " " + now() + " "},
 	} {
 		t.Run("insert "+tt.name, func(t *testing.T) {
 			if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
@@ -1823,8 +1898,8 @@ func TestEnsureSchemaEnforcesKeyLastSeenAtFormat(t *testing.T) {
 		fingerprint string
 		lastSeenAt  string
 	}{
-		{name: "space separated last seen time", fingerprint: "bad-space-last-seen-at", lastSeenAt: "2026-05-03 14:03:32"},
-		{name: "missing timezone last seen time", fingerprint: "bad-missing-timezone-last-seen-at", lastSeenAt: "2026-05-03T14:03:32"},
+		{name: "space separated last seen time", fingerprint: testSHA256Fingerprint('G'), lastSeenAt: "2026-05-03 14:03:32"},
+		{name: "missing timezone last seen time", fingerprint: testSHA256Fingerprint('H'), lastSeenAt: "2026-05-03T14:03:32"},
 	} {
 		t.Run("insert "+tt.name, func(t *testing.T) {
 			if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
