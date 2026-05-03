@@ -442,4 +442,56 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 18,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_remote_addr_insert_tcp
+BEFORE INSERT ON sessions
+WHEN (
+	substr(NEW.remote_addr, 1, 1) = '['
+	AND (
+		instr(NEW.remote_addr, ']:') <= 2
+		OR substr(NEW.remote_addr, instr(NEW.remote_addr, ']:') + 2) = ''
+		OR substr(NEW.remote_addr, instr(NEW.remote_addr, ']:') + 2) GLOB '*[^0-9]*'
+		OR CAST(substr(NEW.remote_addr, instr(NEW.remote_addr, ']:') + 2) AS INTEGER) NOT BETWEEN 1 AND 65535
+	)
+)
+OR (
+	substr(NEW.remote_addr, 1, 1) != '['
+	AND (
+		instr(NEW.remote_addr, ':') <= 1
+		OR substr(NEW.remote_addr, instr(NEW.remote_addr, ':') + 1) = ''
+		OR substr(NEW.remote_addr, instr(NEW.remote_addr, ':') + 1) GLOB '*[^0-9]*'
+		OR CAST(substr(NEW.remote_addr, instr(NEW.remote_addr, ':') + 1) AS INTEGER) NOT BETWEEN 1 AND 65535
+	)
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session remote address must include a host and valid TCP port');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_remote_addr_update_tcp
+BEFORE UPDATE OF remote_addr ON sessions
+WHEN (
+	substr(NEW.remote_addr, 1, 1) = '['
+	AND (
+		instr(NEW.remote_addr, ']:') <= 2
+		OR substr(NEW.remote_addr, instr(NEW.remote_addr, ']:') + 2) = ''
+		OR substr(NEW.remote_addr, instr(NEW.remote_addr, ']:') + 2) GLOB '*[^0-9]*'
+		OR CAST(substr(NEW.remote_addr, instr(NEW.remote_addr, ']:') + 2) AS INTEGER) NOT BETWEEN 1 AND 65535
+	)
+)
+OR (
+	substr(NEW.remote_addr, 1, 1) != '['
+	AND (
+		instr(NEW.remote_addr, ':') <= 1
+		OR substr(NEW.remote_addr, instr(NEW.remote_addr, ':') + 1) = ''
+		OR substr(NEW.remote_addr, instr(NEW.remote_addr, ':') + 1) GLOB '*[^0-9]*'
+		OR CAST(substr(NEW.remote_addr, instr(NEW.remote_addr, ':') + 1) AS INTEGER) NOT BETWEEN 1 AND 65535
+	)
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session remote address must include a host and valid TCP port');
+END;
+`,
+	},
 }

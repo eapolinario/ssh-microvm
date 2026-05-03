@@ -144,6 +144,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 17 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 18")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 18: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 18 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -436,6 +443,74 @@ VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, remoteAddr, 
 	}
 	if gotRemoteAddr != remoteAddr {
 		t.Fatalf("session remote_addr = %q, want %q", gotRemoteAddr, remoteAddr)
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionRemoteAddressTCPValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name       string
+		sessionID  string
+		remoteAddr string
+	}{
+		{name: "missing port", sessionID: "bad-missing-port", remoteAddr: "127.0.0.1"},
+		{name: "missing host", sessionID: "bad-missing-host", remoteAddr: ":2222"},
+		{name: "empty port", sessionID: "bad-empty-port", remoteAddr: "127.0.0.1:"},
+		{name: "non-numeric port", sessionID: "bad-nonnumeric-port", remoteAddr: "127.0.0.1:ssh"},
+		{name: "zero port", sessionID: "bad-zero-port", remoteAddr: "127.0.0.1:0"},
+		{name: "out of range port", sessionID: "bad-out-of-range-port", remoteAddr: "127.0.0.1:65536"},
+		{name: "unbracketed IPv6 address", sessionID: "bad-unbracketed-ipv6", remoteAddr: "::1:2222"},
+		{name: "bracketed IPv6 missing port", sessionID: "bad-bracketed-ipv6-missing-port", remoteAddr: "[::1]:"},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, tt.sessionID, userID, testKeyFingerprint, tt.remoteAddr, now(), "active"); err == nil {
+				t.Fatalf("inserted session with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	remoteAddr := "127.0.0.1:2222"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, remoteAddr, now(), "active"); err != nil {
+		t.Fatalf("insert valid session: %v", err)
+	}
+	for _, tt := range []struct {
+		name       string
+		remoteAddr string
+	}{
+		{name: "missing port", remoteAddr: "127.0.0.1"},
+		{name: "missing host", remoteAddr: ":2222"},
+		{name: "non-numeric port", remoteAddr: "127.0.0.1:ssh"},
+		{name: "zero port", remoteAddr: "127.0.0.1:0"},
+		{name: "out of range port", remoteAddr: "127.0.0.1:65536"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET remote_addr = ? WHERE id = ?", tt.remoteAddr, "session-1"); err == nil {
+				t.Fatalf("updated session to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	validIPv6Addr := "[::1]:2223"
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET remote_addr = ? WHERE id = ?", validIPv6Addr, "session-1"); err != nil {
+		t.Fatalf("updated session to valid bracketed IPv6 remote address: %v", err)
+	}
+
+	var gotRemoteAddr string
+	row := st.db.QueryRowContext(ctx, "SELECT remote_addr FROM sessions WHERE id = ?", "session-1")
+	if err := row.Scan(&gotRemoteAddr); err != nil {
+		t.Fatalf("query session remote_addr: %v", err)
+	}
+	if gotRemoteAddr != validIPv6Addr {
+		t.Fatalf("session remote_addr = %q, want %q", gotRemoteAddr, validIPv6Addr)
 	}
 }
 
