@@ -492,6 +492,9 @@ func (s *Server) proxyToGuest(ch ssh.Channel, ptyReq *ptyRequest, winCh <-chan w
 	if err := s.validateGuestProxy(ch, vm); err != nil {
 		return err
 	}
+	if err := validateWindowChanges(winCh); err != nil {
+		return err
+	}
 	if err := s.validateGuestDial(vm.GuestIP); err != nil {
 		return err
 	}
@@ -552,6 +555,13 @@ func (s *Server) validateGuestProxy(ch ssh.Channel, vm *firecracker.VM) error {
 	}
 	if vm == nil {
 		return errors.New("vm not available")
+	}
+	return nil
+}
+
+func validateWindowChanges(winCh <-chan windowChange) error {
+	if winCh == nil {
+		return errors.New("window change channel must be set")
 	}
 	return nil
 }
