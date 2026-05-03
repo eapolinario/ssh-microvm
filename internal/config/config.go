@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"ssh-microvm/internal/util"
 )
@@ -75,7 +76,7 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 		return nil, err
 	}
 
-	if cfg.StateDir == "" {
+	if isBlank(cfg.StateDir) {
 		return nil, errors.New("--state-dir must be set")
 	}
 	if cfg.DBPath == "" {
@@ -87,16 +88,16 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if err := validateListenAddr(cfg.ListenAddr); err != nil {
 		return nil, err
 	}
-	if cfg.KernelImage == "" {
+	if isBlank(cfg.KernelImage) {
 		return nil, errors.New("--kernel is required")
 	}
-	if cfg.RootFS == "" {
+	if isBlank(cfg.RootFS) {
 		return nil, errors.New("--rootfs is required")
 	}
 	if cfg.AuthMode != AuthModeAutoEnroll && cfg.AuthMode != AuthModeKnownKeys {
 		return nil, fmt.Errorf("invalid --auth-mode: %s", cfg.AuthMode)
 	}
-	if cfg.Firecracker == "" {
+	if isBlank(cfg.Firecracker) {
 		return nil, errors.New("--firecracker must be set")
 	}
 	if cfg.VCPUCount <= 0 {
@@ -108,13 +109,13 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if cfg.GracefulStopS <= 0 {
 		return nil, errors.New("--grace-stop must be > 0")
 	}
-	if cfg.GuestUser == "" {
+	if isBlank(cfg.GuestUser) {
 		return nil, errors.New("--guest-user must be set")
 	}
-	if cfg.GuestKeyPath == "" {
+	if isBlank(cfg.GuestKeyPath) {
 		return nil, errors.New("--guest-key must be set")
 	}
-	if cfg.GuestIP == "" || cfg.HostIP == "" {
+	if isBlank(cfg.GuestIP) || isBlank(cfg.HostIP) {
 		return nil, errors.New("--guest-ip and --host-ip must be set")
 	}
 	if !isIPv4(cfg.GuestIP) {
@@ -128,6 +129,10 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	}
 
 	return cfg, nil
+}
+
+func isBlank(value string) bool {
+	return strings.TrimSpace(value) == ""
 }
 
 func isIPv4(value string) bool {

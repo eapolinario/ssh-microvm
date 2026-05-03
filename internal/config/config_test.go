@@ -108,6 +108,16 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			wantErr: "--rootfs is required",
 		},
 		{
+			name:    "blank kernel",
+			args:    []string{"--kernel", " \t ", "--rootfs", "/rootfs"},
+			wantErr: "--kernel is required",
+		},
+		{
+			name:    "blank rootfs",
+			args:    []string{"--kernel", "/kernel", "--rootfs", " \t "},
+			wantErr: "--rootfs is required",
+		},
+		{
 			name:    "invalid listen address",
 			args:    requiredArgs("--listen", "127.0.0.1"),
 			wantErr: "--listen must be a valid TCP address: 127.0.0.1",
@@ -123,6 +133,11 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			wantErr: "--state-dir must be set",
 		},
 		{
+			name:    "blank state dir",
+			args:    requiredArgs("--state-dir", " \t "),
+			wantErr: "--state-dir must be set",
+		},
+		{
 			name:    "invalid auth mode",
 			args:    requiredArgs("--auth-mode", "invalid"),
 			wantErr: "invalid --auth-mode: invalid",
@@ -130,6 +145,11 @@ func TestLoadFromArgsValidation(t *testing.T) {
 		{
 			name:    "missing firecracker binary",
 			args:    requiredArgs("--firecracker", ""),
+			wantErr: "--firecracker must be set",
+		},
+		{
+			name:    "blank firecracker binary",
+			args:    requiredArgs("--firecracker", " \t "),
 			wantErr: "--firecracker must be set",
 		},
 		{
@@ -153,8 +173,18 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			wantErr: "--guest-user must be set",
 		},
 		{
+			name:    "blank guest user",
+			args:    requiredArgs("--guest-user", " \t "),
+			wantErr: "--guest-user must be set",
+		},
+		{
 			name:    "missing guest key",
 			args:    requiredArgs("--guest-key", ""),
+			wantErr: "--guest-key must be set",
+		},
+		{
+			name:    "blank guest key",
+			args:    requiredArgs("--guest-key", " \t "),
 			wantErr: "--guest-key must be set",
 		},
 		{
@@ -165,6 +195,16 @@ func TestLoadFromArgsValidation(t *testing.T) {
 		{
 			name:    "missing host ip",
 			args:    requiredArgs("--host-ip", ""),
+			wantErr: "--guest-ip and --host-ip must be set",
+		},
+		{
+			name:    "blank guest ip",
+			args:    requiredArgs("--guest-ip", " \t "),
+			wantErr: "--guest-ip and --host-ip must be set",
+		},
+		{
+			name:    "blank host ip",
+			args:    requiredArgs("--host-ip", " \t "),
 			wantErr: "--guest-ip and --host-ip must be set",
 		},
 		{
