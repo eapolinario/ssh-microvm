@@ -426,6 +426,9 @@ func waitForSocket(path string, timeout time.Duration) error {
 	if strings.TrimSpace(path) == "" {
 		return errors.New("api socket path is empty")
 	}
+	if path != strings.TrimSpace(path) {
+		return errors.New("api socket path must not contain surrounding whitespace")
+	}
 	if timeout <= 0 {
 		return errors.New("api socket timeout must be positive")
 	}

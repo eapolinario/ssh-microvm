@@ -633,6 +633,12 @@ func TestWaitForSocketRejectsInvalidState(t *testing.T) {
 			wantErr: "api socket path is empty",
 		},
 		{
+			name:    "socket path with surrounding whitespace",
+			path:    " " + filepath.Join(t.TempDir(), "firecracker.sock") + " ",
+			timeout: time.Second,
+			wantErr: "api socket path must not contain surrounding whitespace",
+		},
+		{
 			name:    "zero timeout",
 			path:    filepath.Join(t.TempDir(), "firecracker.sock"),
 			timeout: 0,
