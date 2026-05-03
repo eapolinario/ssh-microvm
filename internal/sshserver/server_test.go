@@ -656,12 +656,12 @@ func TestParseSSHRequestPayloadsRejectInvalidData(t *testing.T) {
 			t.Fatalf("parseWindowChange accepted invalid %s payload", tt.name)
 		}
 	}
-	for _, command := range []string{"", " \t "} {
+	for _, command := range []string{"", " \t ", " echo hi "} {
 		payload := ssh.Marshal(struct {
 			Command string
 		}{Command: command})
 		if _, ok := parseExecRequest(payload); ok {
-			t.Fatalf("parseExecRequest accepted blank command %q", command)
+			t.Fatalf("parseExecRequest accepted invalid command %q", command)
 		}
 	}
 }
@@ -766,6 +766,15 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			execCmd: " \t ",
 			vm:      validVM,
 			wantErr: "exec command must be set",
+		},
+		{
+			name:    "exec command with surrounding whitespace",
+			server:  validServer,
+			channel: validChannel,
+			winCh:   validWinCh,
+			execCmd: " echo hi ",
+			vm:      validVM,
+			wantErr: "exec command must not contain surrounding whitespace",
 		},
 		{
 			name:    "exec command with shell session",

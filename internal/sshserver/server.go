@@ -516,6 +516,9 @@ func parseExecRequest(payload []byte) (string, bool) {
 	if strings.TrimSpace(req.Command) == "" {
 		return "", false
 	}
+	if req.Command != strings.TrimSpace(req.Command) {
+		return "", false
+	}
 	return req.Command, true
 }
 
@@ -621,6 +624,9 @@ func validateGuestCommand(shell bool, execCmd string) error {
 	}
 	if strings.TrimSpace(execCmd) == "" {
 		return errors.New("exec command must be set")
+	}
+	if execCmd != strings.TrimSpace(execCmd) {
+		return errors.New("exec command must not contain surrounding whitespace")
 	}
 	return nil
 }
