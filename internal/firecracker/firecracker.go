@@ -169,7 +169,12 @@ func buildBootArgs(cfg *config.Config) string {
 }
 
 func hasIPArg(args string) bool {
-	return bytes.Contains([]byte(args), []byte("ip="))
+	for _, field := range strings.Fields(args) {
+		if strings.HasPrefix(field, "ip=") {
+			return true
+		}
+	}
+	return false
 }
 
 func randomMAC(seed string) string {
