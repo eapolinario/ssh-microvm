@@ -484,9 +484,15 @@ func TestStopVMRejectsInvalidState(t *testing.T) {
 			wantErr: "tap name must contain only ASCII letters and digits",
 		},
 		{
-			name:    "non-positive firecracker process PID",
+			name:    "zero firecracker process PID",
 			server:  validServer,
 			vm:      &firecracker.VM{Cmd: &exec.Cmd{Process: &os.Process{Pid: 0}}, TapName: "tap/bad"},
+			wantErr: "firecracker process PID must be > 0",
+		},
+		{
+			name:    "negative firecracker process PID",
+			server:  validServer,
+			vm:      &firecracker.VM{Cmd: &exec.Cmd{Process: &os.Process{Pid: -1}}, TapName: "tap/bad"},
 			wantErr: "firecracker process PID must be > 0",
 		},
 	}
