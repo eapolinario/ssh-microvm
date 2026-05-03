@@ -305,6 +305,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 40 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 41")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 41: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 41 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -414,6 +421,64 @@ VALUES(?, ?, ?, ?, ?, ?)`, sessionID, userID, testKeyFingerprint, "127.0.0.1:222
 	}
 	if gotSessionID != sessionID {
 		t.Fatalf("session id = %q, want %q", gotSessionID, sessionID)
+	}
+}
+
+func TestEnsureSchemaEnforcesVMIDValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	sessionID := "session-1"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, sessionID, userID, testKeyFingerprint, "127.0.0.1:2222", now(), "active"); err != nil {
+		t.Fatalf("insert session fixture: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name string
+		vmID string
+	}{
+		{name: "blank VM ID", vmID: " \t "},
+		{name: "padded VM ID", vmID: " vm-1 "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, tt.vmID, sessionID, filepath.Join(t.TempDir(), tt.name), 1234, now()); err == nil {
+				t.Fatalf("inserted VM with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	vmID := "vm-1"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, vmID, sessionID, filepath.Join(t.TempDir(), vmID), 1234, now()); err != nil {
+		t.Fatalf("insert valid VM: %v", err)
+	}
+	for _, tt := range []struct {
+		name string
+		vmID string
+	}{
+		{name: "blank VM ID", vmID: "\n\t"},
+		{name: "padded VM ID", vmID: "\tvm-2\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE vms SET id = ? WHERE id = ?", tt.vmID, vmID); err == nil {
+				t.Fatalf("updated VM to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotVMID string
+	row := st.db.QueryRowContext(ctx, "SELECT id FROM vms WHERE id = ?", vmID)
+	if err := row.Scan(&gotVMID); err != nil {
+		t.Fatalf("query VM ID: %v", err)
+	}
+	if gotVMID != vmID {
+		t.Fatalf("VM id = %q, want %q", gotVMID, vmID)
 	}
 }
 

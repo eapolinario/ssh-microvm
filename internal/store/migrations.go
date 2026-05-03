@@ -1012,4 +1012,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 41,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_vms_id_insert_valid
+BEFORE INSERT ON vms
+WHEN trim(NEW.id, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.id != trim(NEW.id, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'VM ID must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_id_update_valid
+BEFORE UPDATE OF id ON vms
+WHEN trim(NEW.id, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.id != trim(NEW.id, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'VM ID must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
