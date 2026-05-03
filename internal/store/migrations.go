@@ -1270,4 +1270,124 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 51,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_insert_authorized_key_blob
+BEFORE INSERT ON keys
+WHEN (instr(NEW.public_key, ' ') > 0 OR instr(NEW.public_key, char(9)) > 0)
+AND (CASE
+WHEN instr(NEW.public_key, ' ') > 0
+AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+THEN substr(NEW.public_key, 1, instr(NEW.public_key, ' ') - 1)
+WHEN instr(NEW.public_key, char(9)) > 0
+THEN substr(NEW.public_key, 1, instr(NEW.public_key, char(9)) - 1)
+ELSE NEW.public_key
+END) IN (
+'ssh-rsa',
+'ssh-rsa-cert-v01@openssh.com',
+'ssh-dss',
+'ssh-dss-cert-v01@openssh.com',
+'ssh-ed25519',
+'ssh-ed25519-cert-v01@openssh.com',
+'ecdsa-sha2-nistp256',
+'ecdsa-sha2-nistp256-cert-v01@openssh.com',
+'ecdsa-sha2-nistp384',
+'ecdsa-sha2-nistp384-cert-v01@openssh.com',
+'ecdsa-sha2-nistp521',
+'ecdsa-sha2-nistp521-cert-v01@openssh.com',
+'sk-ssh-ed25519@openssh.com',
+'sk-ssh-ed25519-cert-v01@openssh.com',
+'sk-ecdsa-sha2-nistp256@openssh.com',
+'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com'
+)
+AND (
+ltrim(substr(NEW.public_key, (CASE
+WHEN instr(NEW.public_key, ' ') > 0
+AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+THEN instr(NEW.public_key, ' ')
+WHEN instr(NEW.public_key, char(9)) > 0
+THEN instr(NEW.public_key, char(9))
+ELSE 0
+END) + 1), char(9, 32)) = ''
+OR length(ltrim(substr(NEW.public_key, (CASE
+WHEN instr(NEW.public_key, ' ') > 0
+AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+THEN instr(NEW.public_key, ' ')
+WHEN instr(NEW.public_key, char(9)) > 0
+THEN instr(NEW.public_key, char(9))
+ELSE 0
+END) + 1), char(9, 32))) < 16
+OR ltrim(substr(NEW.public_key, (CASE
+WHEN instr(NEW.public_key, ' ') > 0
+AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+THEN instr(NEW.public_key, ' ')
+WHEN instr(NEW.public_key, char(9)) > 0
+THEN instr(NEW.public_key, char(9))
+ELSE 0
+END) + 1), char(9, 32)) GLOB '[^A-Za-z0-9+/=]*'
+)
+BEGIN
+	SELECT RAISE(ABORT, 'public key must be a valid authorized key');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_update_authorized_key_blob
+BEFORE UPDATE OF public_key ON keys
+WHEN (instr(NEW.public_key, ' ') > 0 OR instr(NEW.public_key, char(9)) > 0)
+AND (CASE
+WHEN instr(NEW.public_key, ' ') > 0
+AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+THEN substr(NEW.public_key, 1, instr(NEW.public_key, ' ') - 1)
+WHEN instr(NEW.public_key, char(9)) > 0
+THEN substr(NEW.public_key, 1, instr(NEW.public_key, char(9)) - 1)
+ELSE NEW.public_key
+END) IN (
+'ssh-rsa',
+'ssh-rsa-cert-v01@openssh.com',
+'ssh-dss',
+'ssh-dss-cert-v01@openssh.com',
+'ssh-ed25519',
+'ssh-ed25519-cert-v01@openssh.com',
+'ecdsa-sha2-nistp256',
+'ecdsa-sha2-nistp256-cert-v01@openssh.com',
+'ecdsa-sha2-nistp384',
+'ecdsa-sha2-nistp384-cert-v01@openssh.com',
+'ecdsa-sha2-nistp521',
+'ecdsa-sha2-nistp521-cert-v01@openssh.com',
+'sk-ssh-ed25519@openssh.com',
+'sk-ssh-ed25519-cert-v01@openssh.com',
+'sk-ecdsa-sha2-nistp256@openssh.com',
+'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com'
+)
+AND (
+ltrim(substr(NEW.public_key, (CASE
+WHEN instr(NEW.public_key, ' ') > 0
+AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+THEN instr(NEW.public_key, ' ')
+WHEN instr(NEW.public_key, char(9)) > 0
+THEN instr(NEW.public_key, char(9))
+ELSE 0
+END) + 1), char(9, 32)) = ''
+OR length(ltrim(substr(NEW.public_key, (CASE
+WHEN instr(NEW.public_key, ' ') > 0
+AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+THEN instr(NEW.public_key, ' ')
+WHEN instr(NEW.public_key, char(9)) > 0
+THEN instr(NEW.public_key, char(9))
+ELSE 0
+END) + 1), char(9, 32))) < 16
+OR ltrim(substr(NEW.public_key, (CASE
+WHEN instr(NEW.public_key, ' ') > 0
+AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+THEN instr(NEW.public_key, ' ')
+WHEN instr(NEW.public_key, char(9)) > 0
+THEN instr(NEW.public_key, char(9))
+ELSE 0
+END) + 1), char(9, 32)) GLOB '[^A-Za-z0-9+/=]*'
+)
+BEGIN
+	SELECT RAISE(ABORT, 'public key must be a valid authorized key');
+END;
+`,
+	},
 }
