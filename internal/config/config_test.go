@@ -123,6 +123,11 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			wantErr: "--mem must be > 0",
 		},
 		{
+			name:    "non-positive graceful stop timeout",
+			args:    requiredArgs("--grace-stop", "0"),
+			wantErr: "--grace-stop must be > 0",
+		},
+		{
 			name:    "missing guest user",
 			args:    requiredArgs("--guest-user", ""),
 			wantErr: "--guest-user must be set",

@@ -95,6 +95,9 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if cfg.MemMiB <= 0 {
 		return nil, errors.New("--mem must be > 0")
 	}
+	if cfg.GracefulStopS <= 0 {
+		return nil, errors.New("--grace-stop must be > 0")
+	}
 	if cfg.GuestUser == "" {
 		return nil, errors.New("--guest-user must be set")
 	}
