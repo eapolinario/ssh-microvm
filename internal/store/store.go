@@ -414,8 +414,12 @@ func validateTCPAddr(label, value string) error {
 	if port == "" {
 		return fmt.Errorf("%s port must be set", label)
 	}
-	if _, err := net.LookupPort("tcp", port); err != nil {
+	portNumber, err := net.LookupPort("tcp", port)
+	if err != nil {
 		return fmt.Errorf("%s port must be valid", label)
+	}
+	if portNumber == 0 {
+		return fmt.Errorf("%s port must be > 0", label)
 	}
 	if _, err := net.ResolveTCPAddr("tcp", value); err != nil {
 		return fmt.Errorf("%s must resolve to a valid TCP address", label)

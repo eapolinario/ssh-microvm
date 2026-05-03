@@ -684,6 +684,11 @@ func TestCreateSessionRejectsInvalidRemoteAddr(t *testing.T) {
 			wantErr:    "session remote address port must be valid",
 		},
 		{
+			name:       "zero port",
+			remoteAddr: "127.0.0.1:0",
+			wantErr:    "session remote address port must be > 0",
+		},
+		{
 			name:       "unresolvable address",
 			remoteAddr: "999.0.0.1:2222",
 			wantErr:    "session remote address must resolve to a valid TCP address",
