@@ -41,6 +41,12 @@ func NewManager(cfg *config.Config) *Manager {
 }
 
 func (m *Manager) Start(ctx context.Context) (*VM, error) {
+	if m == nil {
+		return nil, errors.New("firecracker manager must be set")
+	}
+	if m.cfg == nil {
+		return nil, errors.New("config must be set")
+	}
 	id, err := util.RandomHex(6)
 	if err != nil {
 		return nil, err

@@ -103,6 +103,37 @@ func TestStopReapsProcessAfterGracefulTimeoutKill(t *testing.T) {
 	}
 }
 
+func TestManagerStartRejectsNilDependencies(t *testing.T) {
+	tests := []struct {
+		name    string
+		manager *Manager
+		wantErr string
+	}{
+		{
+			name:    "nil manager",
+			manager: nil,
+			wantErr: "firecracker manager must be set",
+		},
+		{
+			name:    "nil config",
+			manager: NewManager(nil),
+			wantErr: "config must be set",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vm, err := tt.manager.Start(context.Background())
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Start error = %v, want containing %q", err, tt.wantErr)
+			}
+			if vm != nil {
+				t.Fatalf("Start returned VM %v, want nil", vm)
+			}
+		})
+	}
+}
+
 func TestBuildBootArgsAddsGuestIPConfiguration(t *testing.T) {
 	cfg := &config.Config{
 		BootArgs: "console=ttyS0 reboot=k panic=1 pci=off",
