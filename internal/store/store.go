@@ -278,7 +278,7 @@ func (s *Store) AttachVM(ctx context.Context, sessionID, vmID string) error {
 	if hasSurroundingWhitespace(vmID) {
 		return errors.New("VM ID must not contain surrounding whitespace")
 	}
-	return execOne(ctx, s.db, `UPDATE sessions SET vm_id = ? WHERE id = ? AND vm_id IS NULL AND EXISTS (SELECT 1 FROM vms WHERE id = ? AND session_id = ?)`, vmID, sessionID, vmID, sessionID)
+	return execOne(ctx, s.db, `UPDATE sessions SET vm_id = ? WHERE id = ? AND status = 'active' AND ended_at IS NULL AND vm_id IS NULL AND EXISTS (SELECT 1 FROM vms WHERE id = ? AND session_id = ?)`, vmID, sessionID, vmID, sessionID)
 }
 
 func (s *Store) CreateVM(ctx context.Context, vm VM) error {

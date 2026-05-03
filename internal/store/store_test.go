@@ -1347,6 +1347,64 @@ func TestAttachVMRejectsAlreadyAttachedSession(t *testing.T) {
 	}
 }
 
+func TestAttachVMRejectsEndedSession(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	vm := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	if err := st.CreateVM(ctx, vm); err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+	if err := st.EndSession(ctx, session.ID, "closed"); err != nil {
+		t.Fatalf("EndSession: %v", err)
+	}
+
+	err = st.AttachVM(ctx, session.ID, vm.ID)
+	if err != sql.ErrNoRows {
+		t.Fatalf("AttachVM ended session error = %v, want sql.ErrNoRows", err)
+	}
+
+	var (
+		status     string
+		endedAt    sql.NullString
+		attachedVM sql.NullString
+	)
+	row := st.db.QueryRowContext(ctx, "SELECT status, ended_at, vm_id FROM sessions WHERE id = ?", session.ID)
+	if err := row.Scan(&status, &endedAt, &attachedVM); err != nil {
+		t.Fatalf("query session lifecycle state: %v", err)
+	}
+	if status != "closed" {
+		t.Fatalf("session status = %q, want closed", status)
+	}
+	if !endedAt.Valid {
+		t.Fatalf("session ended_at was not set by EndSession")
+	}
+	if attachedVM.Valid {
+		t.Fatalf("AttachVM set vm_id on ended session to %q", attachedVM.String)
+	}
+}
+
 func TestCreateVMRejectsBlankFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
