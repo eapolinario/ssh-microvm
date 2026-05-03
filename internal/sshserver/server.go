@@ -253,6 +253,13 @@ func (s *Server) publicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey) (*s
 
 func loadOrCreateHostKey(path string) (ssh.Signer, error) {
 	if data, err := os.ReadFile(path); err == nil {
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			return nil, fmt.Errorf("host key %s permissions too open: %v", path, info.Mode().Perm())
+		}
 		return ssh.ParsePrivateKey(data)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err

@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -35,6 +36,24 @@ func TestLoadOrCreateHostKeyCreatesAndReusesKey(t *testing.T) {
 	}
 	if got, want := ssh.FingerprintSHA256(reloaded.PublicKey()), ssh.FingerprintSHA256(signer.PublicKey()); got != want {
 		t.Fatalf("reloaded key fingerprint = %q, want %q", got, want)
+	}
+}
+
+func TestLoadOrCreateHostKeyRejectsOpenPermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ssh_host_ed25519")
+	if _, err := loadOrCreateHostKey(path); err != nil {
+		t.Fatalf("loadOrCreateHostKey create: %v", err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatalf("chmod host key: %v", err)
+	}
+
+	_, err := loadOrCreateHostKey(path)
+	if err == nil {
+		t.Fatalf("loadOrCreateHostKey accepted host key with open permissions")
+	}
+	if !strings.Contains(err.Error(), "permissions too open") {
+		t.Fatalf("loadOrCreateHostKey error = %q, want permissions error", err)
 	}
 }
 
