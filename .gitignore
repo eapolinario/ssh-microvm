@@ -1,0 +1,51 @@
+# Binaries
+/bin/
+/build/
+/dist/
+ssh-microvm
+cmd/ssh-microvm/ssh-microvm
+
+# Go build/test artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# VM artifacts (kernels, rootfs images, generated keys)
+/artifacts/
+*.ext4
+*.squashfs
+*.squashfs.upstream
+*.img
+vmlinux.bin
+vmlinuz*
+initrd*
+*.id_rsa
+*.id_rsa.pub
+
+# Firecracker / VMM runtime files
+*.sock
+*.socket
+*.pid
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.local
+*.pem
+*.key
+
+# Agent shell scratch
+.agent-shell/
