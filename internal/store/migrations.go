@@ -634,4 +634,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 24,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_data_json_insert_valid
+BEFORE INSERT ON audit_events
+WHEN trim(NEW.data_json, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.data_json != trim(NEW.data_json, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'audit data must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_data_json_update_valid
+BEFORE UPDATE OF data_json ON audit_events
+WHEN trim(NEW.data_json, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.data_json != trim(NEW.data_json, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'audit data must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }

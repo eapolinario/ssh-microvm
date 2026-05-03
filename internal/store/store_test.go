@@ -186,6 +186,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 23 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 24")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 24: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 24 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -245,6 +252,55 @@ VALUES(?, ?, ?, ?)`, "audit-1", eventType, `{"ok":true}`, now()); err != nil {
 	}
 	if gotEventType != eventType {
 		t.Fatalf("audit event_type = %q, want %q", gotEventType, eventType)
+	}
+}
+
+func TestEnsureSchemaEnforcesAuditDataValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	for _, tt := range []struct {
+		name    string
+		eventID string
+		data    string
+	}{
+		{name: "blank data", eventID: "bad-blank-data", data: " \t "},
+		{name: "padded data", eventID: "bad-padded-data", data: ` {"ok":true} `},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO audit_events(id, event_type, data_json, created_at)
+VALUES(?, ?, ?, ?)`, tt.eventID, "test.audit", tt.data, now()); err == nil {
+				t.Fatalf("inserted audit event with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	data := `{"ok":true}`
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO audit_events(id, event_type, data_json, created_at)
+VALUES(?, ?, ?, ?)`, "audit-1", "test.audit", data, now()); err != nil {
+		t.Fatalf("insert valid audit event: %v", err)
+	}
+	for _, tt := range []struct {
+		name string
+		data string
+	}{
+		{name: "blank data", data: "\n\t"},
+		{name: "padded data", data: "\t{\"ok\":true}\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE audit_events SET data_json = ? WHERE id = ?", tt.data, "audit-1"); err == nil {
+				t.Fatalf("updated audit event to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotData string
+	row := st.db.QueryRowContext(ctx, "SELECT data_json FROM audit_events WHERE id = ?", "audit-1")
+	if err := row.Scan(&gotData); err != nil {
+		t.Fatalf("query audit event data: %v", err)
+	}
+	if gotData != data {
+		t.Fatalf("audit data_json = %q, want %q", gotData, data)
 	}
 }
 
