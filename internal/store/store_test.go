@@ -235,6 +235,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 30 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 31")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 31: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 31 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -381,6 +388,53 @@ func TestEnsureSchemaEnforcesUserCreatedAtFormat(t *testing.T) {
 	}
 	if gotCreatedAt != validOffsetTime {
 		t.Fatalf("user created_at = %q, want %q", gotCreatedAt, validOffsetTime)
+	}
+}
+
+func TestEnsureSchemaEnforcesUserLastSeenAtValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	for _, tt := range []struct {
+		name       string
+		userID     string
+		lastSeenAt string
+	}{
+		{name: "blank last seen time", userID: "bad-blank-last-seen-at", lastSeenAt: " \t "},
+		{name: "padded last seen time", userID: "bad-padded-last-seen-at", lastSeenAt: " " + now() + " "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", tt.userID, tt.userID, now(), tt.lastSeenAt); err == nil {
+				t.Fatalf("inserted user with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	lastSeenAt := now()
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", now(), lastSeenAt); err != nil {
+		t.Fatalf("insert valid user: %v", err)
+	}
+	for _, tt := range []struct {
+		name       string
+		lastSeenAt string
+	}{
+		{name: "blank last seen time", lastSeenAt: "\n\t"},
+		{name: "padded last seen time", lastSeenAt: "\t" + now() + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE users SET last_seen_at = ? WHERE id = ?", tt.lastSeenAt, "user-1"); err == nil {
+				t.Fatalf("updated user to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotLastSeenAt string
+	row := st.db.QueryRowContext(ctx, "SELECT last_seen_at FROM users WHERE id = ?", "user-1")
+	if err := row.Scan(&gotLastSeenAt); err != nil {
+		t.Fatalf("query user last_seen_at: %v", err)
+	}
+	if gotLastSeenAt != lastSeenAt {
+		t.Fatalf("user last_seen_at = %q, want %q", gotLastSeenAt, lastSeenAt)
 	}
 }
 

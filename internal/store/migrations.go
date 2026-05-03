@@ -788,4 +788,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 31,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_users_last_seen_at_insert_valid
+BEFORE INSERT ON users
+WHEN trim(NEW.last_seen_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.last_seen_at != trim(NEW.last_seen_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'user last seen time must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_users_last_seen_at_update_valid
+BEFORE UPDATE OF last_seen_at ON users
+WHEN trim(NEW.last_seen_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.last_seen_at != trim(NEW.last_seen_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'user last seen time must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
