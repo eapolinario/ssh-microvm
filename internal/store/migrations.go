@@ -672,4 +672,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 26,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_created_at_insert_valid
+BEFORE INSERT ON audit_events
+WHEN trim(NEW.created_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.created_at != trim(NEW.created_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'audit event creation time must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_created_at_update_valid
+BEFORE UPDATE OF created_at ON audit_events
+WHEN trim(NEW.created_at, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.created_at != trim(NEW.created_at, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'audit event creation time must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
