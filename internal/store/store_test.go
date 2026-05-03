@@ -312,6 +312,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 41 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 42")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 42: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 42 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -479,6 +486,54 @@ VALUES(?, ?, ?, ?, ?)`, vmID, sessionID, filepath.Join(t.TempDir(), vmID), 1234,
 	}
 	if gotVMID != vmID {
 		t.Fatalf("VM id = %q, want %q", gotVMID, vmID)
+	}
+}
+
+func TestEnsureSchemaEnforcesAuditEventIDValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	for _, tt := range []struct {
+		name    string
+		eventID string
+	}{
+		{name: "blank audit event ID", eventID: " \t "},
+		{name: "padded audit event ID", eventID: " audit-1 "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO audit_events(id, event_type, data_json, created_at)
+VALUES(?, ?, ?, ?)`, tt.eventID, "test.audit", `{"ok":true}`, now()); err == nil {
+				t.Fatalf("inserted audit event with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	eventID := "audit-1"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO audit_events(id, event_type, data_json, created_at)
+VALUES(?, ?, ?, ?)`, eventID, "test.audit", `{"ok":true}`, now()); err != nil {
+		t.Fatalf("insert valid audit event: %v", err)
+	}
+	for _, tt := range []struct {
+		name    string
+		eventID string
+	}{
+		{name: "blank audit event ID", eventID: "\n\t"},
+		{name: "padded audit event ID", eventID: "\taudit-2\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE audit_events SET id = ? WHERE id = ?", tt.eventID, eventID); err == nil {
+				t.Fatalf("updated audit event to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotEventID string
+	row := st.db.QueryRowContext(ctx, "SELECT id FROM audit_events WHERE id = ?", eventID)
+	if err := row.Scan(&gotEventID); err != nil {
+		t.Fatalf("query audit event ID: %v", err)
+	}
+	if gotEventID != eventID {
+		t.Fatalf("audit event id = %q, want %q", gotEventID, eventID)
 	}
 }
 

@@ -1032,4 +1032,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 42,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_id_insert_valid
+BEFORE INSERT ON audit_events
+WHEN trim(NEW.id, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.id != trim(NEW.id, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'audit event ID must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_id_update_valid
+BEFORE UPDATE OF id ON audit_events
+WHEN trim(NEW.id, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.id != trim(NEW.id, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'audit event ID must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
