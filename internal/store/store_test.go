@@ -428,6 +428,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 57 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 58")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 58: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 58 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -1834,6 +1841,47 @@ VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", validWithComment, now(), n
 	}
 	if !strings.Contains(err.Error(), "ssh-rsa public key blob must include exponent and modulus") {
 		t.Fatalf("update key to incomplete RSA blob error = %v, want RSA blob fields trigger error", err)
+	}
+
+	var gotPublicKey string
+	row := st.db.QueryRowContext(ctx, "SELECT public_key FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&gotPublicKey); err != nil {
+		t.Fatalf("query key public_key: %v", err)
+	}
+	if gotPublicKey != validWithComment {
+		t.Fatalf("key public_key = %q, want %q", gotPublicKey, validWithComment)
+	}
+}
+
+func TestEnsureSchemaEnforcesKeyPublicKeyRSABlobModulus(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", now(), now()); err != nil {
+		t.Fatalf("insert user fixture: %v", err)
+	}
+
+	rsaKeyWithoutModulus := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQAB"
+	_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testSHA256Fingerprint('A'), "user-1", rsaKeyWithoutModulus, now(), now())
+	if err == nil {
+		t.Fatalf("inserted key with RSA blob missing modulus, want trigger error")
+	}
+	if !strings.Contains(err.Error(), "ssh-rsa public key blob must include modulus") {
+		t.Fatalf("insert key with RSA blob missing modulus error = %v, want RSA blob modulus trigger error", err)
+	}
+
+	validWithComment := testAuthorizedKey + " alice@example"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", validWithComment, now(), now()); err != nil {
+		t.Fatalf("insert valid key with comment: %v", err)
+	}
+	_, err = st.db.ExecContext(ctx, "UPDATE keys SET public_key = ? WHERE fingerprint = ?", rsaKeyWithoutModulus, testKeyFingerprint)
+	if err == nil {
+		t.Fatalf("updated key to RSA blob missing modulus, want trigger error")
+	}
+	if !strings.Contains(err.Error(), "ssh-rsa public key blob must include modulus") {
+		t.Fatalf("update key to RSA blob missing modulus error = %v, want RSA blob modulus trigger error", err)
 	}
 
 	var gotPublicKey string
