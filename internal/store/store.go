@@ -297,6 +297,9 @@ func (s *Store) CreateVM(ctx context.Context, vm VM) error {
 	if hasSurroundingWhitespace(vm.StartedAt) {
 		return errors.New("VM start time must not contain surrounding whitespace")
 	}
+	if vm.FCPid <= 0 {
+		return errors.New("VM Firecracker PID must be > 0")
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
 VALUES(?, ?, ?, ?, ?)`, vm.ID, vm.SessionID, vm.StateDir, vm.FCPid, vm.StartedAt)
 	return err
