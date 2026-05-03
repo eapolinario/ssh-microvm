@@ -104,6 +104,50 @@ func TestServeRejectsNilDependencies(t *testing.T) {
 	}
 }
 
+func TestServeRejectsInvalidListenAddrBeforeListen(t *testing.T) {
+	tests := []struct {
+		name       string
+		listenAddr string
+		wantErr    string
+	}{
+		{
+			name:       "blank listen address",
+			listenAddr: " \t ",
+			wantErr:    "listen address must be set",
+		},
+		{
+			name:       "listen address with surrounding whitespace",
+			listenAddr: " 127.0.0.1:0 ",
+			wantErr:    "listen address must not contain surrounding whitespace",
+		},
+		{
+			name:       "listen address without port",
+			listenAddr: "127.0.0.1",
+			wantErr:    "listen address must be a valid TCP address",
+		},
+		{
+			name:       "listen address with invalid port",
+			listenAddr: "127.0.0.1:not-a-port",
+			wantErr:    "listen address port must be valid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newReadyTestServer(t)
+			server.cfg.ListenAddr = tt.listenAddr
+
+			err := server.Serve(context.Background())
+			if err == nil {
+				t.Fatalf("Serve succeeded, want error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Serve error = %q, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestServeListenerRejectsNilDependencies(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

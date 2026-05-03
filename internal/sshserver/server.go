@@ -53,6 +53,9 @@ func (s *Server) Serve(ctx context.Context) error {
 	if err := s.validateServe(ctx); err != nil {
 		return err
 	}
+	if err := validateListenAddr(s.cfg.ListenAddr); err != nil {
+		return err
+	}
 	ln, err := net.Listen("tcp", s.cfg.ListenAddr)
 	if err != nil {
 		return err
@@ -696,6 +699,29 @@ func waitForPort(addr string, timeout time.Duration) error {
 	return waitForPortWithDial(addr, timeout, func(addr string, timeout time.Duration) (net.Conn, error) {
 		return net.DialTimeout("tcp", addr, timeout)
 	})
+}
+
+func validateListenAddr(addr string) error {
+	if strings.TrimSpace(addr) == "" {
+		return errors.New("listen address must be set")
+	}
+	if addr != strings.TrimSpace(addr) {
+		return errors.New("listen address must not contain surrounding whitespace")
+	}
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("listen address must be a valid TCP address: %s", addr)
+	}
+	if port == "" {
+		return errors.New("listen address port must be set")
+	}
+	if _, err := net.LookupPort("tcp", port); err != nil {
+		return fmt.Errorf("listen address port must be valid: %s", port)
+	}
+	if _, err := net.ResolveTCPAddr("tcp", addr); err != nil {
+		return fmt.Errorf("listen address must resolve to a valid TCP address: %s", addr)
+	}
+	return nil
 }
 
 func isIPv4(value string) bool {
