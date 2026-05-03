@@ -425,6 +425,20 @@ func TestTapCommandHelpersRejectInvalidState(t *testing.T) {
 			wantErr: "tap name is empty",
 		},
 		{
+			name: "setupTap invalid tap name characters",
+			run: func() error {
+				return setupTap(context.Background(), "tap bad", "172.16.0.1")
+			},
+			wantErr: "tap name must contain only ASCII letters and digits",
+		},
+		{
+			name: "setupTap overlong tap name",
+			run: func() error {
+				return setupTap(context.Background(), "tap0123456789012", "172.16.0.1")
+			},
+			wantErr: "tap name must be <= 15 characters",
+		},
+		{
 			name: "setupTap blank host IP",
 			run: func() error {
 				return setupTap(context.Background(), "tap0", " \t ")
@@ -451,6 +465,13 @@ func TestTapCommandHelpersRejectInvalidState(t *testing.T) {
 				return teardownTap(context.Background(), " \t ")
 			},
 			wantErr: "tap name is empty",
+		},
+		{
+			name: "teardownTap invalid tap name characters",
+			run: func() error {
+				return teardownTap(context.Background(), "tap/bad")
+			},
+			wantErr: "tap name must contain only ASCII letters and digits",
 		},
 		{
 			name: "runCmd nil context",

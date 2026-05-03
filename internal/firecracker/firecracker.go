@@ -279,8 +279,8 @@ func setupTap(ctx context.Context, tapName, hostIP string) error {
 	if ctx == nil {
 		return errors.New("context must be set")
 	}
-	if strings.TrimSpace(tapName) == "" {
-		return errors.New("tap name is empty")
+	if err := validateTapName(tapName); err != nil {
+		return err
 	}
 	hostIP = strings.TrimSpace(hostIP)
 	if hostIP == "" {
@@ -307,10 +307,23 @@ func teardownTap(ctx context.Context, tapName string) error {
 	if ctx == nil {
 		return errors.New("context must be set")
 	}
+	if err := validateTapName(tapName); err != nil {
+		return err
+	}
+	return runCmd(ctx, "sudo", "ip", "link", "del", tapName)
+}
+
+func validateTapName(tapName string) error {
 	if strings.TrimSpace(tapName) == "" {
 		return errors.New("tap name is empty")
 	}
-	return runCmd(ctx, "sudo", "ip", "link", "del", tapName)
+	if len(tapName) > 15 {
+		return errors.New("tap name must be <= 15 characters")
+	}
+	if tapName != sanitizeTapNamePart(tapName) {
+		return errors.New("tap name must contain only ASCII letters and digits")
+	}
+	return nil
 }
 
 func runCmd(ctx context.Context, name string, args ...string) error {
