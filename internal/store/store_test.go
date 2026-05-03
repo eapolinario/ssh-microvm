@@ -1469,6 +1469,51 @@ func TestAttachVMRejectsEndedSession(t *testing.T) {
 	}
 }
 
+func TestCreateVMRejectsEndedSession(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if err := st.EndSession(ctx, session.ID, "closed"); err != nil {
+		t.Fatalf("EndSession: %v", err)
+	}
+
+	vm := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	err = st.CreateVM(ctx, vm)
+	if err != sql.ErrNoRows {
+		t.Fatalf("CreateVM ended session error = %v, want sql.ErrNoRows", err)
+	}
+
+	var vmCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM vms")
+	if err := row.Scan(&vmCount); err != nil {
+		t.Fatalf("query vms: %v", err)
+	}
+	if vmCount != 0 {
+		t.Fatalf("CreateVM inserted VMs for ended session=%d, want 0", vmCount)
+	}
+}
+
 func TestCreateVMRejectsBlankFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()

@@ -319,9 +319,9 @@ func (s *Store) CreateVM(ctx context.Context, vm VM) error {
 	if vm.FCPid <= 0 {
 		return errors.New("VM Firecracker PID must be > 0")
 	}
-	_, err := s.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
-VALUES(?, ?, ?, ?, ?)`, vm.ID, vm.SessionID, vm.StateDir, vm.FCPid, vm.StartedAt)
-	return err
+	return execOne(ctx, s.db, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+SELECT ?, ?, ?, ?, ?
+WHERE EXISTS (SELECT 1 FROM sessions WHERE id = ? AND status = 'active' AND ended_at IS NULL)`, vm.ID, vm.SessionID, vm.StateDir, vm.FCPid, vm.StartedAt, vm.SessionID)
 }
 
 func (s *Store) EndVM(ctx context.Context, vmID string, exitStatus int) error {
