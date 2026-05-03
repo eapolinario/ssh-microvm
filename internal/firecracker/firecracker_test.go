@@ -573,6 +573,13 @@ func TestTapCommandHelpersRejectInvalidState(t *testing.T) {
 			},
 			wantErr: "command name is empty",
 		},
+		{
+			name: "runCmd command name with surrounding whitespace",
+			run: func() error {
+				return runCmd(context.Background(), " true ")
+			},
+			wantErr: "command name must not contain surrounding whitespace",
+		},
 	}
 
 	for _, tt := range tests {

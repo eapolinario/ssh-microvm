@@ -371,6 +371,9 @@ func runCmd(ctx context.Context, name string, args ...string) error {
 	if strings.TrimSpace(name) == "" {
 		return errors.New("command name is empty")
 	}
+	if name != strings.TrimSpace(name) {
+		return errors.New("command name must not contain surrounding whitespace")
+	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
