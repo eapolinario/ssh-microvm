@@ -252,6 +252,9 @@ func (s *Server) publicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey) (*s
 }
 
 func loadOrCreateHostKey(path string) (ssh.Signer, error) {
+	if err := ensureHostKeyDir(filepath.Dir(path)); err != nil {
+		return nil, err
+	}
 	if data, err := os.ReadFile(path); err == nil {
 		info, err := os.Stat(path)
 		if err != nil {
@@ -262,10 +265,6 @@ func loadOrCreateHostKey(path string) (ssh.Signer, error) {
 		}
 		return ssh.ParsePrivateKey(data)
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return nil, err
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
 
@@ -282,6 +281,23 @@ func loadOrCreateHostKey(path string) (ssh.Signer, error) {
 		return nil, err
 	}
 	return ssh.ParsePrivateKey(pemBytes)
+}
+
+func ensureHostKeyDir(path string) error {
+	if err := os.MkdirAll(path, 0o700); err != nil {
+		return err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("host key directory %s is not a directory", path)
+	}
+	if info.Mode().Perm()&0o022 != 0 {
+		return fmt.Errorf("host key directory %s permissions too open: %v", path, info.Mode().Perm())
+	}
+	return nil
 }
 
 type ptyRequest struct {

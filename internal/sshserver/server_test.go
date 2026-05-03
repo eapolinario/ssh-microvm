@@ -84,6 +84,24 @@ func TestLoadOrCreateHostKeyRejectsOpenPermissions(t *testing.T) {
 	}
 }
 
+func TestLoadOrCreateHostKeyRejectsWritableParentDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "open")
+	if err := os.Mkdir(dir, 0o777); err != nil {
+		t.Fatalf("mkdir open host key dir: %v", err)
+	}
+	if err := os.Chmod(dir, 0o777); err != nil {
+		t.Fatalf("chmod open host key dir: %v", err)
+	}
+
+	_, err := loadOrCreateHostKey(filepath.Join(dir, "ssh_host_ed25519"))
+	if err == nil {
+		t.Fatalf("loadOrCreateHostKey accepted a group/world-writable parent directory")
+	}
+	if !strings.Contains(err.Error(), "permissions too open") {
+		t.Fatalf("loadOrCreateHostKey error = %q, want permissions error", err)
+	}
+}
+
 func TestPublicKeyCallbackAuthModes(t *testing.T) {
 	signer := newTestSigner(t)
 	key := signer.PublicKey()
