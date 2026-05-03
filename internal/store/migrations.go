@@ -1748,4 +1748,168 @@ AND (
 END;
 `,
 	},
+	{
+		version: 54,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_insert_authorized_key_blob_type
+BEFORE INSERT ON keys
+BEGIN
+WITH parsed AS (
+	SELECT CASE
+	WHEN instr(NEW.public_key, ' ') > 0
+	AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+	THEN instr(NEW.public_key, ' ')
+	WHEN instr(NEW.public_key, char(9)) > 0
+	THEN instr(NEW.public_key, char(9))
+	ELSE 0
+	END AS first_separator
+),
+fields AS (
+	SELECT CASE
+	WHEN first_separator > 0 THEN substr(NEW.public_key, 1, first_separator - 1)
+	ELSE NEW.public_key
+	END AS key_type,
+	ltrim(substr(NEW.public_key, first_separator + 1), char(9, 32)) AS after_type
+	FROM parsed
+),
+blob AS (
+	SELECT key_type, CASE
+	WHEN instr(after_type, ' ') > 0
+	AND (instr(after_type, char(9)) = 0 OR instr(after_type, ' ') < instr(after_type, char(9)))
+	THEN substr(after_type, 1, instr(after_type, ' ') - 1)
+	WHEN instr(after_type, char(9)) > 0
+	THEN substr(after_type, 1, instr(after_type, char(9)) - 1)
+	ELSE after_type
+	END AS value
+	FROM fields
+)
+SELECT RAISE(ABORT, 'public key blob must match authorized key type')
+FROM blob
+WHERE (instr(NEW.public_key, ' ') > 0 OR instr(NEW.public_key, char(9)) > 0)
+AND instr(NEW.public_key, char(10)) = 0
+AND instr(NEW.public_key, char(13)) = 0
+AND key_type IN (
+	'ssh-rsa',
+	'ssh-rsa-cert-v01@openssh.com',
+	'ssh-dss',
+	'ssh-dss-cert-v01@openssh.com',
+	'ssh-ed25519',
+	'ssh-ed25519-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp256',
+	'ecdsa-sha2-nistp256-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp384',
+	'ecdsa-sha2-nistp384-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp521',
+	'ecdsa-sha2-nistp521-cert-v01@openssh.com',
+	'sk-ssh-ed25519@openssh.com',
+	'sk-ssh-ed25519-cert-v01@openssh.com',
+	'sk-ecdsa-sha2-nistp256@openssh.com',
+	'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com'
+)
+AND length(value) >= 16
+AND value NOT GLOB '*[^A-Za-z0-9+/=]*'
+AND length(value) % 4 = 0
+AND value NOT GLOB '*=[A-Za-z0-9+/]*'
+AND value NOT GLOB '*===*'
+AND value NOT GLOB CASE key_type
+	WHEN 'ssh-rsa' THEN 'AAAAB3NzaC1yc2*'
+	WHEN 'ssh-rsa-cert-v01@openssh.com' THEN 'AAAAHHNzaC1yc2EtY2VydC12MDFAb3BlbnNzaC5jb2*'
+	WHEN 'ssh-dss' THEN 'AAAAB3NzaC1kc3*'
+	WHEN 'ssh-dss-cert-v01@openssh.com' THEN 'AAAAHHNzaC1kc3MtY2VydC12MDFAb3BlbnNzaC5jb2*'
+	WHEN 'ssh-ed25519' THEN 'AAAAC3NzaC1lZDI1NTE5*'
+	WHEN 'ssh-ed25519-cert-v01@openssh.com' THEN 'AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29t*'
+	WHEN 'ecdsa-sha2-nistp256' THEN 'AAAAE2VjZHNhLXNoYTItbmlzdHAyNT*'
+	WHEN 'ecdsa-sha2-nistp256-cert-v01@openssh.com' THEN 'AAAAKGVjZHNhLXNoYTItbmlzdHAyNTYtY2VydC12MDFAb3BlbnNzaC5jb2*'
+	WHEN 'ecdsa-sha2-nistp384' THEN 'AAAAE2VjZHNhLXNoYTItbmlzdHAzOD*'
+	WHEN 'ecdsa-sha2-nistp384-cert-v01@openssh.com' THEN 'AAAAKGVjZHNhLXNoYTItbmlzdHAzODQtY2VydC12MDFAb3BlbnNzaC5jb2*'
+	WHEN 'ecdsa-sha2-nistp521' THEN 'AAAAE2VjZHNhLXNoYTItbmlzdHA1Mj*'
+	WHEN 'ecdsa-sha2-nistp521-cert-v01@openssh.com' THEN 'AAAAKGVjZHNhLXNoYTItbmlzdHA1MjEtY2VydC12MDFAb3BlbnNzaC5jb2*'
+	WHEN 'sk-ssh-ed25519@openssh.com' THEN 'AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29t*'
+	WHEN 'sk-ssh-ed25519-cert-v01@openssh.com' THEN 'AAAAI3NrLXNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29t*'
+	WHEN 'sk-ecdsa-sha2-nistp256@openssh.com' THEN 'AAAAInNrLWVjZHNhLXNoYTItbmlzdHAyNTZAb3BlbnNzaC5jb2*'
+	WHEN 'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com' THEN 'AAAAK3NrLWVjZHNhLXNoYTItbmlzdHAyNTYtY2VydC12MDFAb3BlbnNzaC5jb2*'
+END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_update_authorized_key_blob_type
+BEFORE UPDATE OF public_key ON keys
+BEGIN
+WITH parsed AS (
+	SELECT CASE
+	WHEN instr(NEW.public_key, ' ') > 0
+	AND (instr(NEW.public_key, char(9)) = 0 OR instr(NEW.public_key, ' ') < instr(NEW.public_key, char(9)))
+	THEN instr(NEW.public_key, ' ')
+	WHEN instr(NEW.public_key, char(9)) > 0
+	THEN instr(NEW.public_key, char(9))
+	ELSE 0
+	END AS first_separator
+),
+fields AS (
+	SELECT CASE
+	WHEN first_separator > 0 THEN substr(NEW.public_key, 1, first_separator - 1)
+	ELSE NEW.public_key
+	END AS key_type,
+	ltrim(substr(NEW.public_key, first_separator + 1), char(9, 32)) AS after_type
+	FROM parsed
+),
+blob AS (
+	SELECT key_type, CASE
+	WHEN instr(after_type, ' ') > 0
+	AND (instr(after_type, char(9)) = 0 OR instr(after_type, ' ') < instr(after_type, char(9)))
+	THEN substr(after_type, 1, instr(after_type, ' ') - 1)
+	WHEN instr(after_type, char(9)) > 0
+	THEN substr(after_type, 1, instr(after_type, char(9)) - 1)
+	ELSE after_type
+	END AS value
+	FROM fields
+)
+SELECT RAISE(ABORT, 'public key blob must match authorized key type')
+FROM blob
+WHERE (instr(NEW.public_key, ' ') > 0 OR instr(NEW.public_key, char(9)) > 0)
+AND instr(NEW.public_key, char(10)) = 0
+AND instr(NEW.public_key, char(13)) = 0
+AND key_type IN (
+	'ssh-rsa',
+	'ssh-rsa-cert-v01@openssh.com',
+	'ssh-dss',
+	'ssh-dss-cert-v01@openssh.com',
+	'ssh-ed25519',
+	'ssh-ed25519-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp256',
+	'ecdsa-sha2-nistp256-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp384',
+	'ecdsa-sha2-nistp384-cert-v01@openssh.com',
+	'ecdsa-sha2-nistp521',
+	'ecdsa-sha2-nistp521-cert-v01@openssh.com',
+	'sk-ssh-ed25519@openssh.com',
+	'sk-ssh-ed25519-cert-v01@openssh.com',
+	'sk-ecdsa-sha2-nistp256@openssh.com',
+	'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com'
+)
+AND length(value) >= 16
+AND value NOT GLOB '*[^A-Za-z0-9+/=]*'
+AND length(value) % 4 = 0
+AND value NOT GLOB '*=[A-Za-z0-9+/]*'
+AND value NOT GLOB '*===*'
+AND value NOT GLOB CASE key_type
+	WHEN 'ssh-rsa' THEN 'AAAAB3NzaC1yc2*'
+	WHEN 'ssh-rsa-cert-v01@openssh.com' THEN 'AAAAHHNzaC1yc2EtY2VydC12MDFAb3BlbnNzaC5jb2*'
+	WHEN 'ssh-dss' THEN 'AAAAB3NzaC1kc3*'
+	WHEN 'ssh-dss-cert-v01@openssh.com' THEN 'AAAAHHNzaC1kc3MtY2VydC12MDFAb3BlbnNzaC5jb2*'
+	WHEN 'ssh-ed25519' THEN 'AAAAC3NzaC1lZDI1NTE5*'
+	WHEN 'ssh-ed25519-cert-v01@openssh.com' THEN 'AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29t*'
+	WHEN 'ecdsa-sha2-nistp256' THEN 'AAAAE2VjZHNhLXNoYTItbmlzdHAyNT*'
+	WHEN 'ecdsa-sha2-nistp256-cert-v01@openssh.com' THEN 'AAAAKGVjZHNhLXNoYTItbmlzdHAyNTYtY2VydC12MDFAb3BlbnNzaC5jb2*'
+	WHEN 'ecdsa-sha2-nistp384' THEN 'AAAAE2VjZHNhLXNoYTItbmlzdHAzOD*'
+	WHEN 'ecdsa-sha2-nistp384-cert-v01@openssh.com' THEN 'AAAAKGVjZHNhLXNoYTItbmlzdHAzODQtY2VydC12MDFAb3BlbnNzaC5jb2*'
+	WHEN 'ecdsa-sha2-nistp521' THEN 'AAAAE2VjZHNhLXNoYTItbmlzdHA1Mj*'
+	WHEN 'ecdsa-sha2-nistp521-cert-v01@openssh.com' THEN 'AAAAKGVjZHNhLXNoYTItbmlzdHA1MjEtY2VydC12MDFAb3BlbnNzaC5jb2*'
+	WHEN 'sk-ssh-ed25519@openssh.com' THEN 'AAAAGnNrLXNzaC1lZDI1NTE5QG9wZW5zc2guY29t*'
+	WHEN 'sk-ssh-ed25519-cert-v01@openssh.com' THEN 'AAAAI3NrLXNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29t*'
+	WHEN 'sk-ecdsa-sha2-nistp256@openssh.com' THEN 'AAAAInNrLWVjZHNhLXNoYTItbmlzdHAyNTZAb3BlbnNzaC5jb2*'
+	WHEN 'sk-ecdsa-sha2-nistp256-cert-v01@openssh.com' THEN 'AAAAK3NrLWVjZHNhLXNoYTItbmlzdHAyNTYtY2VydC12MDFAb3BlbnNzaC5jb2*'
+END;
+END;
+`,
+	},
 }
