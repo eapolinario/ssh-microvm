@@ -621,6 +621,9 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 
 func TestHandleChannelsRejectsInvalidState(t *testing.T) {
 	validVM := &firecracker.VM{GuestIP: "127.0.0.1"}
+	nilNewChannels := make(chan ssh.NewChannel, 1)
+	nilNewChannels <- nil
+	close(nilNewChannels)
 
 	tests := []struct {
 		name     string
@@ -642,6 +645,12 @@ func TestHandleChannelsRejectsInvalidState(t *testing.T) {
 			name:     "nil VM",
 			server:   &Server{},
 			channels: make(chan ssh.NewChannel),
+		},
+		{
+			name:     "nil new channel",
+			server:   &Server{},
+			channels: nilNewChannels,
+			vm:       validVM,
 		},
 	}
 

@@ -229,6 +229,10 @@ func (s *Server) handleChannels(channels <-chan ssh.NewChannel, vm *firecracker.
 	}
 
 	for ch := range channels {
+		if isNilSSHNewChannel(ch) {
+			log.Printf("ssh channel rejected: new channel must be set")
+			continue
+		}
 		if ch.ChannelType() != "session" {
 			_ = ch.Reject(ssh.UnknownChannelType, "unknown channel type")
 			continue
@@ -317,13 +321,21 @@ func (s *Server) handleSession(ch ssh.Channel, requests <-chan *ssh.Request, vm 
 }
 
 func isNilSSHChannel(ch ssh.Channel) bool {
-	if ch == nil {
+	return isNilInterface(ch)
+}
+
+func isNilSSHNewChannel(ch ssh.NewChannel) bool {
+	return isNilInterface(ch)
+}
+
+func isNilInterface(v any) bool {
+	if v == nil {
 		return true
 	}
-	v := reflect.ValueOf(ch)
-	switch v.Kind() {
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return v.IsNil()
+		return rv.IsNil()
 	default:
 		return false
 	}
