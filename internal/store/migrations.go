@@ -159,4 +159,22 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 6,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_status_insert_valid
+BEFORE INSERT ON sessions
+WHEN NEW.status NOT IN ('active', 'closed', 'vm_failed')
+BEGIN
+	SELECT RAISE(ABORT, 'session status must be active, closed, or vm_failed');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_status_update_valid
+BEFORE UPDATE OF status ON sessions
+WHEN NEW.status NOT IN ('active', 'closed', 'vm_failed')
+BEGIN
+	SELECT RAISE(ABORT, 'session status must be active, closed, or vm_failed');
+END;
+`,
+	},
 }

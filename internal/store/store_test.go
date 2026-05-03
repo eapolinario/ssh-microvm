@@ -60,6 +60,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 5 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 6")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 6: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 6 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -70,6 +77,37 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("table %s count = %d, want 1", table, count)
 		}
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionStatusValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "bad-status-session", userID, testKeyFingerprint, "127.0.0.1:2222", now(), "paused"); err == nil {
+		t.Fatalf("inserted session with invalid status, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2222", now(), "active"); err != nil {
+		t.Fatalf("insert valid session: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET status = ? WHERE id = ?", "paused", "session-1"); err == nil {
+		t.Fatalf("updated session to invalid status, want trigger error")
+	}
+
+	var status string
+	row := st.db.QueryRowContext(ctx, "SELECT status FROM sessions WHERE id = ?", "session-1")
+	if err := row.Scan(&status); err != nil {
+		t.Fatalf("query session status: %v", err)
+	}
+	if status != "active" {
+		t.Fatalf("session status = %q, want active", status)
 	}
 }
 
