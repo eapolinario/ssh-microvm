@@ -346,6 +346,58 @@ func TestPublicKeyCallbackAuthModes(t *testing.T) {
 	})
 }
 
+func TestPublicKeyCallbackRejectsInvalidState(t *testing.T) {
+	key := newTestSigner(t).PublicKey()
+
+	tests := []struct {
+		name    string
+		server  *Server
+		key     ssh.PublicKey
+		wantErr string
+	}{
+		{
+			name:    "nil server",
+			key:     key,
+			wantErr: "server must be set",
+		},
+		{
+			name:    "nil config",
+			server:  &Server{},
+			key:     key,
+			wantErr: "config must be set",
+		},
+		{
+			name:    "nil public key",
+			server:  &Server{cfg: &config.Config{AuthMode: config.AuthModeAutoEnroll}},
+			wantErr: "public key must be set",
+		},
+		{
+			name:    "known keys mode nil store",
+			server:  &Server{cfg: &config.Config{AuthMode: config.AuthModeKnownKeys}},
+			key:     key,
+			wantErr: "store must be set",
+		},
+		{
+			name:    "invalid auth mode",
+			server:  &Server{cfg: &config.Config{AuthMode: "bogus"}},
+			key:     key,
+			wantErr: "invalid auth mode: bogus",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			perms, err := tt.server.publicKeyCallback(nil, tt.key)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("publicKeyCallback error = %v, want containing %q", err, tt.wantErr)
+			}
+			if perms != nil {
+				t.Fatalf("publicKeyCallback permissions = %#v, want nil", perms)
+			}
+		})
+	}
+}
+
 func TestParseSSHRequestPayloads(t *testing.T) {
 	ptyPayload := ssh.Marshal(struct {
 		Term          string

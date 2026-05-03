@@ -271,10 +271,25 @@ func (s *Server) handleSession(ch ssh.Channel, requests <-chan *ssh.Request, vm 
 }
 
 func (s *Server) publicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+	if s == nil {
+		return nil, errors.New("server must be set")
+	}
+	if s.cfg == nil {
+		return nil, errors.New("config must be set")
+	}
+	if key == nil {
+		return nil, errors.New("public key must be set")
+	}
+
 	fingerprint := ssh.FingerprintSHA256(key)
 	pubKey := string(ssh.MarshalAuthorizedKey(key))
 
-	if s.cfg.AuthMode == config.AuthModeKnownKeys {
+	switch s.cfg.AuthMode {
+	case config.AuthModeAutoEnroll:
+	case config.AuthModeKnownKeys:
+		if s.store == nil {
+			return nil, errors.New("store must be set")
+		}
 		exists, err := s.store.HasKey(context.Background(), fingerprint)
 		if err != nil {
 			return nil, err
@@ -282,6 +297,8 @@ func (s *Server) publicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey) (*s
 		if !exists {
 			return nil, fmt.Errorf("unknown key: %s", fingerprint)
 		}
+	default:
+		return nil, fmt.Errorf("invalid auth mode: %s", s.cfg.AuthMode)
 	}
 
 	return &ssh.Permissions{
