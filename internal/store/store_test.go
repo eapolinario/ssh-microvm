@@ -333,6 +333,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 44 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 45")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 45: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 45 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -606,6 +613,72 @@ VALUES(?, ?, ?, ?, ?)`, vmID, sessionID, filepath.Join(t.TempDir(), vmID), 1234,
 	}
 	if gotVMID != vmID {
 		t.Fatalf("VM id = %q, want %q", gotVMID, vmID)
+	}
+}
+
+func TestEnsureSchemaEnforcesVMSessionIDValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	sessionID := "session-1"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, sessionID, userID, testKeyFingerprint, "127.0.0.1:2222", now(), "active"); err != nil {
+		t.Fatalf("insert session fixture: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		sessionID string
+	}{
+		{name: "blank session ID", sessionID: " \t "},
+		{name: "padded session ID", sessionID: " " + sessionID + " "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			_, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "bad-"+strings.ReplaceAll(tt.name, " ", "-"), tt.sessionID, filepath.Join(t.TempDir(), tt.name), 1234, now())
+			if err == nil {
+				t.Fatalf("inserted VM with %s, want trigger error", tt.name)
+			}
+			if !strings.Contains(err.Error(), "VM session ID must be set and not contain surrounding whitespace") {
+				t.Fatalf("insert VM with %s error = %v, want VM session ID trigger error", tt.name, err)
+			}
+		})
+	}
+
+	vmID := "vm-1"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, vmID, sessionID, filepath.Join(t.TempDir(), vmID), 1234, now()); err != nil {
+		t.Fatalf("insert valid VM: %v", err)
+	}
+	for _, tt := range []struct {
+		name      string
+		sessionID string
+	}{
+		{name: "blank session ID", sessionID: "\n\t"},
+		{name: "padded session ID", sessionID: "\t" + sessionID + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			_, err := st.db.ExecContext(ctx, "UPDATE vms SET session_id = ? WHERE id = ?", tt.sessionID, vmID)
+			if err == nil {
+				t.Fatalf("updated VM to %s, want trigger error", tt.name)
+			}
+			if !strings.Contains(err.Error(), "VM session ID must be set and not contain surrounding whitespace") {
+				t.Fatalf("update VM to %s error = %v, want VM session ID trigger error", tt.name, err)
+			}
+		})
+	}
+
+	var gotSessionID string
+	row := st.db.QueryRowContext(ctx, "SELECT session_id FROM vms WHERE id = ?", vmID)
+	if err := row.Scan(&gotSessionID); err != nil {
+		t.Fatalf("query VM session_id: %v", err)
+	}
+	if gotSessionID != sessionID {
+		t.Fatalf("VM session_id = %q, want %q", gotSessionID, sessionID)
 	}
 }
 
