@@ -39,6 +39,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 2 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 3")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 3: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 3 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -61,6 +68,35 @@ func TestEnsureSchemaEnforcesUniqueUsernames(t *testing.T) {
 	}
 	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-2", "alice", now(), now()); err == nil {
 		t.Fatalf("inserted duplicate username, want unique constraint error")
+	}
+}
+
+func TestEnsureSchemaEnforcesOneVMPerSession(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: testKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 1234, now()); err != nil {
+		t.Fatalf("insert first VM: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-2", session.ID, filepath.Join(t.TempDir(), "vm-2"), 1235, now()); err == nil {
+		t.Fatalf("inserted duplicate VM session, want unique constraint error")
 	}
 }
 
@@ -1751,36 +1787,23 @@ func TestAttachVMRejectsAlreadyAttachedSession(t *testing.T) {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
-	vms := []VM{
-		{
-			ID:        "vm-1",
-			SessionID: session.ID,
-			StateDir:  filepath.Join(t.TempDir(), "vm-1"),
-			FCPid:     1234,
-			StartedAt: now(),
-		},
-		{
-			ID:        "vm-2",
-			SessionID: session.ID,
-			StateDir:  filepath.Join(t.TempDir(), "vm-2"),
-			FCPid:     1235,
-			StartedAt: now(),
-		},
+	vm := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
 	}
-	if err := st.CreateVM(ctx, vms[0]); err != nil {
-		t.Fatalf("CreateVM first VM: %v", err)
+	if err := st.CreateVM(ctx, vm); err != nil {
+		t.Fatalf("CreateVM: %v", err)
 	}
-	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
-VALUES(?, ?, ?, ?, ?)`, vms[1].ID, vms[1].SessionID, vms[1].StateDir, vms[1].FCPid, vms[1].StartedAt); err != nil {
-		t.Fatalf("insert second VM fixture: %v", err)
-	}
-	if err := st.AttachVM(ctx, session.ID, vms[0].ID); err != nil {
-		t.Fatalf("AttachVM first VM: %v", err)
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET vm_id = ? WHERE id = ?", vm.ID, session.ID); err != nil {
+		t.Fatalf("mark session attached fixture: %v", err)
 	}
 
-	err = st.AttachVM(ctx, session.ID, vms[1].ID)
+	err = st.AttachVM(ctx, session.ID, vm.ID)
 	if err != sql.ErrNoRows {
-		t.Fatalf("second AttachVM error = %v, want sql.ErrNoRows", err)
+		t.Fatalf("AttachVM already-attached session error = %v, want sql.ErrNoRows", err)
 	}
 
 	var attachedVM string
@@ -1788,8 +1811,8 @@ VALUES(?, ?, ?, ?, ?)`, vms[1].ID, vms[1].SessionID, vms[1].StateDir, vms[1].FCP
 	if err := row.Scan(&attachedVM); err != nil {
 		t.Fatalf("query session vm_id: %v", err)
 	}
-	if attachedVM != vms[0].ID {
-		t.Fatalf("session vm_id = %q, want original VM %q", attachedVM, vms[0].ID)
+	if attachedVM != vm.ID {
+		t.Fatalf("session vm_id = %q, want original VM %q", attachedVM, vm.ID)
 	}
 }
 

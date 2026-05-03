@@ -72,4 +72,10 @@ CREATE INDEX IF NOT EXISTS idx_vms_session_id ON vms(session_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
 `,
 	},
+	{
+		version: 3,
+		sql: `
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vms_session_id_unique ON vms(session_id);
+`,
+	},
 }
