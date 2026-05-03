@@ -220,8 +220,14 @@ func (s *Store) EndSession(ctx context.Context, sessionID, status string) error 
 	if isBlank(sessionID) {
 		return errors.New("session ID must be set")
 	}
+	if hasSurroundingWhitespace(sessionID) {
+		return errors.New("session ID must not contain surrounding whitespace")
+	}
 	if isBlank(status) {
 		return errors.New("session status must be set")
+	}
+	if hasSurroundingWhitespace(status) {
+		return errors.New("session status must not contain surrounding whitespace")
 	}
 	return execOne(ctx, s.db, `UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?`, now(), status, sessionID)
 }
@@ -233,8 +239,14 @@ func (s *Store) AttachVM(ctx context.Context, sessionID, vmID string) error {
 	if isBlank(sessionID) {
 		return errors.New("session ID must be set")
 	}
+	if hasSurroundingWhitespace(sessionID) {
+		return errors.New("session ID must not contain surrounding whitespace")
+	}
 	if isBlank(vmID) {
 		return errors.New("VM ID must be set")
+	}
+	if hasSurroundingWhitespace(vmID) {
+		return errors.New("VM ID must not contain surrounding whitespace")
 	}
 	return execOne(ctx, s.db, `UPDATE sessions SET vm_id = ? WHERE id = ? AND EXISTS (SELECT 1 FROM vms WHERE id = ?)`, vmID, sessionID, vmID)
 }
@@ -266,6 +278,9 @@ func (s *Store) EndVM(ctx context.Context, vmID string, exitStatus int) error {
 	}
 	if isBlank(vmID) {
 		return errors.New("VM ID must be set")
+	}
+	if hasSurroundingWhitespace(vmID) {
+		return errors.New("VM ID must not contain surrounding whitespace")
 	}
 	return execOne(ctx, s.db, `UPDATE vms SET ended_at = ?, exit_status = ? WHERE id = ?`, now(), exitStatus, vmID)
 }

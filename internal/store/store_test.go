@@ -732,6 +732,110 @@ WHERE s.id = ?`, session.ID)
 	}
 }
 
+func TestLifecycleUpdatesRejectWhitespacePaddedInputs(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	vm := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	if err := st.CreateVM(ctx, vm); err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{
+			name: "EndSession padded session ID",
+			run: func() error {
+				return st.EndSession(ctx, " "+session.ID+" ", "closed")
+			},
+		},
+		{
+			name: "EndSession padded status",
+			run: func() error {
+				return st.EndSession(ctx, session.ID, " closed ")
+			},
+		},
+		{
+			name: "AttachVM padded session ID",
+			run: func() error {
+				return st.AttachVM(ctx, " "+session.ID+" ", vm.ID)
+			},
+		},
+		{
+			name: "AttachVM padded VM ID",
+			run: func() error {
+				return st.AttachVM(ctx, session.ID, " "+vm.ID+" ")
+			},
+		},
+		{
+			name: "EndVM padded VM ID",
+			run: func() error {
+				return st.EndVM(ctx, " "+vm.ID+" ", 0)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.run(); err == nil {
+				t.Fatalf("%s succeeded", tt.name)
+			} else if err == sql.ErrNoRows {
+				t.Fatalf("%s returned sql.ErrNoRows, want validation error", tt.name)
+			}
+		})
+	}
+
+	var (
+		status     string
+		attachedVM sql.NullString
+		sessionEnd sql.NullString
+		vmEnd      sql.NullString
+	)
+	row := st.db.QueryRowContext(ctx, `
+SELECT s.status, s.vm_id, s.ended_at, v.ended_at
+FROM sessions s
+JOIN vms v ON v.session_id = s.id
+WHERE s.id = ?`, session.ID)
+	if err := row.Scan(&status, &attachedVM, &sessionEnd, &vmEnd); err != nil {
+		t.Fatalf("query lifecycle records: %v", err)
+	}
+	if status != "active" {
+		t.Fatalf("session status = %q, want active", status)
+	}
+	if attachedVM.Valid {
+		t.Fatalf("session vm_id = %q, want NULL", attachedVM.String)
+	}
+	if sessionEnd.Valid {
+		t.Fatalf("session ended_at = %q, want NULL", sessionEnd.String)
+	}
+	if vmEnd.Valid {
+		t.Fatalf("vm ended_at = %q, want NULL", vmEnd.String)
+	}
+}
+
 func TestAttachVMRequiresExistingVM(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
