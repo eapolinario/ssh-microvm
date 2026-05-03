@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -169,6 +171,9 @@ func (s *Store) EndVM(ctx context.Context, vmID string, exitStatus int) error {
 }
 
 func (s *Store) Audit(ctx context.Context, eventType, dataJSON string) error {
+	if !json.Valid([]byte(dataJSON)) {
+		return errors.New("audit data must be valid JSON")
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO audit_events(id, event_type, data_json, created_at)
 VALUES(?, ?, ?, ?)`, newID(), eventType, dataJSON, now())
 	return err

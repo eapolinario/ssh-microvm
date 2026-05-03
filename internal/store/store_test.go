@@ -224,6 +224,28 @@ func TestAttachVMRequiresExistingVM(t *testing.T) {
 	}
 }
 
+func TestAuditRequiresValidJSON(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if err := st.Audit(ctx, "bad.audit", `{"missing-close":`); err == nil {
+		t.Fatalf("Audit accepted invalid JSON data")
+	}
+
+	var auditCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_events WHERE event_type = ?", "bad.audit")
+	if err := row.Scan(&auditCount); err != nil {
+		t.Fatalf("query invalid audit count: %v", err)
+	}
+	if auditCount != 0 {
+		t.Fatalf("invalid audit event count = %d, want 0", auditCount)
+	}
+
+	if err := st.Audit(ctx, "good.audit", `{"ok":true}`); err != nil {
+		t.Fatalf("Audit valid JSON: %v", err)
+	}
+}
+
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 
