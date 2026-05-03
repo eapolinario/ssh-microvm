@@ -479,7 +479,7 @@ func parsePtyRequest(payload []byte) (ptyRequest, bool) {
 	if err := ssh.Unmarshal(payload, &req); err != nil {
 		return ptyRequest{}, false
 	}
-	if strings.TrimSpace(req.Term) == "" || req.Columns == 0 || req.Rows == 0 {
+	if strings.TrimSpace(req.Term) == "" || req.Term != strings.TrimSpace(req.Term) || req.Columns == 0 || req.Rows == 0 {
 		return ptyRequest{}, false
 	}
 	return ptyRequest{
@@ -601,6 +601,9 @@ func validateGuestPTY(ptyReq *ptyRequest) error {
 	}
 	if strings.TrimSpace(ptyReq.Term) == "" {
 		return errors.New("pty terminal must be set")
+	}
+	if ptyReq.Term != strings.TrimSpace(ptyReq.Term) {
+		return errors.New("pty terminal must not contain surrounding whitespace")
 	}
 	if ptyReq.Width <= 0 || ptyReq.Height <= 0 {
 		return errors.New("pty dimensions must be positive")

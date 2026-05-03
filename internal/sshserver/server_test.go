@@ -620,6 +620,7 @@ func TestParseSSHRequestPayloadsRejectInvalidData(t *testing.T) {
 		rows    uint32
 	}{
 		{name: "blank term", term: " \t ", columns: 120, rows: 40},
+		{name: "term with surrounding whitespace", term: " xterm-256color ", columns: 120, rows: 40},
 		{name: "zero columns", term: "xterm-256color", rows: 40},
 		{name: "zero rows", term: "xterm-256color", columns: 120},
 	} {
@@ -729,6 +730,16 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			shell:   true,
 			vm:      validVM,
 			wantErr: "pty terminal must be set",
+		},
+		{
+			name:    "pty terminal with surrounding whitespace",
+			server:  validServer,
+			channel: validChannel,
+			ptyReq:  &ptyRequest{Term: " xterm ", Width: 80, Height: 24},
+			winCh:   validWinCh,
+			shell:   true,
+			vm:      validVM,
+			wantErr: "pty terminal must not contain surrounding whitespace",
 		},
 		{
 			name:    "zero pty width",
