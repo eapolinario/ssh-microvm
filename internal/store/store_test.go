@@ -540,6 +540,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 73 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 74")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 74: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 74 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -2611,6 +2618,47 @@ VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", rsaKeyWithFourteenModulusB
 	}
 	if gotPublicKey != rsaKeyWithFourteenModulusBytes {
 		t.Fatalf("key public_key = %q, want %q", gotPublicKey, rsaKeyWithFourteenModulusBytes)
+	}
+}
+
+func TestEnsureSchemaEnforcesKeyPublicKeyRSABlobDeclaredFifteenByteModulus(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", now(), now()); err != nil {
+		t.Fatalf("insert user fixture: %v", err)
+	}
+
+	rsaKeyWithShortDeclaredFifteenByteModulus := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAADwECAwQFBgcICQoLDA0O"
+	_, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testSHA256Fingerprint('A'), "user-1", rsaKeyWithShortDeclaredFifteenByteModulus, now(), now())
+	if err == nil {
+		t.Fatalf("inserted key with short declared fifteen-byte RSA modulus, want trigger error")
+	}
+	if !strings.Contains(err.Error(), "ssh-rsa public key blob must include declared fifteen-byte modulus") {
+		t.Fatalf("insert key with short declared fifteen-byte RSA modulus error = %v, want RSA declared fifteen-byte modulus trigger error", err)
+	}
+
+	rsaKeyWithFifteenModulusBytes := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAAADwECAwQFBgcICQoLDA0ODw=="
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", rsaKeyWithFifteenModulusBytes, now(), now()); err != nil {
+		t.Fatalf("insert valid RSA key with fifteen declared modulus bytes: %v", err)
+	}
+	_, err = st.db.ExecContext(ctx, "UPDATE keys SET public_key = ? WHERE fingerprint = ?", rsaKeyWithShortDeclaredFifteenByteModulus, testKeyFingerprint)
+	if err == nil {
+		t.Fatalf("updated key to short declared fifteen-byte RSA modulus, want trigger error")
+	}
+	if !strings.Contains(err.Error(), "ssh-rsa public key blob must include declared fifteen-byte modulus") {
+		t.Fatalf("update key to short declared fifteen-byte RSA modulus error = %v, want RSA declared fifteen-byte modulus trigger error", err)
+	}
+
+	var gotPublicKey string
+	row := st.db.QueryRowContext(ctx, "SELECT public_key FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&gotPublicKey); err != nil {
+		t.Fatalf("query key public_key: %v", err)
+	}
+	if gotPublicKey != rsaKeyWithFifteenModulusBytes {
+		t.Fatalf("key public_key = %q, want %q", gotPublicKey, rsaKeyWithFifteenModulusBytes)
 	}
 }
 
