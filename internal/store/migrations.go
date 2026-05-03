@@ -78,4 +78,48 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_vms_session_id_unique ON vms(session_id);
 `,
 	},
+	{
+		version: 4,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_vm_id_insert_valid
+BEFORE INSERT ON sessions
+WHEN NEW.vm_id IS NOT NULL
+AND NOT EXISTS (
+	SELECT 1 FROM vms WHERE id = NEW.vm_id AND session_id = NEW.id
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session vm_id must reference a VM for the same session');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_vm_id_update_valid
+BEFORE UPDATE OF id, vm_id ON sessions
+WHEN NEW.vm_id IS NOT NULL
+AND NOT EXISTS (
+	SELECT 1 FROM vms WHERE id = NEW.vm_id AND session_id = NEW.id
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session vm_id must reference a VM for the same session');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_identity_update_preserves_session_links
+BEFORE UPDATE OF id, session_id ON vms
+WHEN EXISTS (
+	SELECT 1 FROM sessions
+	WHERE vm_id = OLD.id
+	AND (NEW.id != OLD.id OR id != NEW.session_id)
+)
+BEGIN
+	SELECT RAISE(ABORT, 'referenced VM identity must not break session link');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_delete_preserves_session_links
+BEFORE DELETE ON vms
+WHEN EXISTS (
+	SELECT 1 FROM sessions WHERE vm_id = OLD.id
+)
+BEGIN
+	SELECT RAISE(ABORT, 'referenced VM must not be deleted');
+END;
+`,
+	},
 }

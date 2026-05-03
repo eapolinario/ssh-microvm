@@ -46,6 +46,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 3 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 4")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 4: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 4 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -97,6 +104,79 @@ VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 
 	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
 VALUES(?, ?, ?, ?, ?)`, "vm-2", session.ID, filepath.Join(t.TempDir(), "vm-2"), 1235, now()); err == nil {
 		t.Fatalf("inserted duplicate VM session, want unique constraint error")
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionVMReference(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	sessions := []Session{
+		{
+			ID:             "session-1",
+			UserID:         userID,
+			KeyFingerprint: testKeyFingerprint,
+			RemoteAddr:     "127.0.0.1:2222",
+			StartedAt:      now(),
+			Status:         "active",
+		},
+		{
+			ID:             "session-2",
+			UserID:         userID,
+			KeyFingerprint: testKeyFingerprint,
+			RemoteAddr:     "127.0.0.1:2223",
+			StartedAt:      now(),
+			Status:         "active",
+		},
+	}
+	for _, session := range sessions {
+		if err := st.CreateSession(ctx, session); err != nil {
+			t.Fatalf("CreateSession %s: %v", session.ID, err)
+		}
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-2", sessions[1].ID, filepath.Join(t.TempDir(), "vm-2"), 1234, now()); err != nil {
+		t.Fatalf("insert VM fixture: %v", err)
+	}
+
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET vm_id = ? WHERE id = ?", "missing-vm", sessions[0].ID); err == nil {
+		t.Fatalf("updated session with dangling vm_id, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET vm_id = ? WHERE id = ?", "vm-2", sessions[0].ID); err == nil {
+		t.Fatalf("updated session with cross-session vm_id, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET vm_id = ? WHERE id = ?", "vm-2", sessions[1].ID); err != nil {
+		t.Fatalf("update same-session vm_id: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET session_id = ? WHERE id = ?", sessions[0].ID, "vm-2"); err == nil {
+		t.Fatalf("reassigned linked VM to another session, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET id = ? WHERE id = ?", "vm-renamed", "vm-2"); err == nil {
+		t.Fatalf("renamed linked VM, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, "DELETE FROM vms WHERE id = ?", "vm-2"); err == nil {
+		t.Fatalf("deleted linked VM, want trigger error")
+	}
+
+	for _, session := range sessions {
+		var attachedVM sql.NullString
+		row := st.db.QueryRowContext(ctx, "SELECT vm_id FROM sessions WHERE id = ?", session.ID)
+		if err := row.Scan(&attachedVM); err != nil {
+			t.Fatalf("query session %s vm_id: %v", session.ID, err)
+		}
+		if session.ID == sessions[0].ID {
+			if attachedVM.Valid {
+				t.Fatalf("rejected vm_id update mutated session %s to %q", session.ID, attachedVM.String)
+			}
+			continue
+		}
+		if !attachedVM.Valid || attachedVM.String != "vm-2" {
+			t.Fatalf("session %s vm_id = %v, want vm-2", session.ID, attachedVM)
+		}
 	}
 }
 
