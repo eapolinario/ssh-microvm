@@ -69,6 +69,198 @@ func TestNewRejectsBlankPath(t *testing.T) {
 	}
 }
 
+func TestStoreAPIsRejectNilStore(t *testing.T) {
+	ctx := context.Background()
+	validSession := Session{
+		ID:             "session-1",
+		UserID:         "user-1",
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	validVM := VM{
+		ID:        "vm-1",
+		SessionID: validSession.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	tests := []struct {
+		name string
+		run  func(*Store) error
+	}{
+		{
+			name: "Close",
+			run: func(st *Store) error {
+				return st.Close()
+			},
+		},
+		{
+			name: "EnsureSchema",
+			run: func(st *Store) error {
+				return st.EnsureSchema(ctx)
+			},
+		},
+		{
+			name: "HasKey",
+			run: func(st *Store) error {
+				_, err := st.HasKey(ctx, "SHA256:test")
+				return err
+			},
+		},
+		{
+			name: "EnsureUserAndKey",
+			run: func(st *Store) error {
+				_, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+				return err
+			},
+		},
+		{
+			name: "CreateSession",
+			run: func(st *Store) error {
+				return st.CreateSession(ctx, validSession)
+			},
+		},
+		{
+			name: "EndSession",
+			run: func(st *Store) error {
+				return st.EndSession(ctx, validSession.ID, "closed")
+			},
+		},
+		{
+			name: "AttachVM",
+			run: func(st *Store) error {
+				return st.AttachVM(ctx, validSession.ID, validVM.ID)
+			},
+		},
+		{
+			name: "CreateVM",
+			run: func(st *Store) error {
+				return st.CreateVM(ctx, validVM)
+			},
+		},
+		{
+			name: "EndVM",
+			run: func(st *Store) error {
+				return st.EndVM(ctx, validVM.ID, 0)
+			},
+		},
+		{
+			name: "Audit",
+			run: func(st *Store) error {
+				return st.Audit(ctx, "test.audit", `{"ok":true}`)
+			},
+		},
+	}
+
+	stores := []struct {
+		name string
+		st   *Store
+	}{
+		{name: "nil receiver", st: nil},
+		{name: "nil database", st: &Store{}},
+	}
+	for _, storeCase := range stores {
+		for _, tt := range tests {
+			t.Run(storeCase.name+" "+tt.name, func(t *testing.T) {
+				st := storeCase.st
+				if err := tt.run(st); err == nil {
+					t.Fatalf("%s accepted %s", tt.name, storeCase.name)
+				}
+			})
+		}
+	}
+}
+
+func TestStoreAPIsRejectNilContext(t *testing.T) {
+	st := newTestStore(t)
+	validSession := Session{
+		ID:             "session-1",
+		UserID:         "user-1",
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	validVM := VM{
+		ID:        "vm-1",
+		SessionID: validSession.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	tests := []struct {
+		name string
+		run  func() error
+	}{
+		{
+			name: "EnsureSchema",
+			run: func() error {
+				return st.EnsureSchema(nil)
+			},
+		},
+		{
+			name: "HasKey",
+			run: func() error {
+				_, err := st.HasKey(nil, "SHA256:test")
+				return err
+			},
+		},
+		{
+			name: "EnsureUserAndKey",
+			run: func() error {
+				_, err := st.EnsureUserAndKey(nil, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+				return err
+			},
+		},
+		{
+			name: "CreateSession",
+			run: func() error {
+				return st.CreateSession(nil, validSession)
+			},
+		},
+		{
+			name: "EndSession",
+			run: func() error {
+				return st.EndSession(nil, validSession.ID, "closed")
+			},
+		},
+		{
+			name: "AttachVM",
+			run: func() error {
+				return st.AttachVM(nil, validSession.ID, validVM.ID)
+			},
+		},
+		{
+			name: "CreateVM",
+			run: func() error {
+				return st.CreateVM(nil, validVM)
+			},
+		},
+		{
+			name: "EndVM",
+			run: func() error {
+				return st.EndVM(nil, validVM.ID, 0)
+			},
+		},
+		{
+			name: "Audit",
+			run: func() error {
+				return st.Audit(nil, "test.audit", `{"ok":true}`)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := tt.run(); err == nil {
+				t.Fatalf("%s accepted nil context", tt.name)
+			}
+		})
+	}
+}
+
 func TestStoreUserSessionAndVMLifecycle(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()

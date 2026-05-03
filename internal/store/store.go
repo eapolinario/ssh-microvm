@@ -38,10 +38,16 @@ func New(path string) (*Store, error) {
 }
 
 func (s *Store) Close() error {
+	if s == nil || s.db == nil {
+		return errors.New("store must be set")
+	}
 	return s.db.Close()
 }
 
 func (s *Store) EnsureSchema(ctx context.Context) error {
+	if err := s.validate(ctx); err != nil {
+		return err
+	}
 	if err := s.ensureMigrationsTable(ctx); err != nil {
 		return err
 	}
@@ -94,6 +100,9 @@ func (s *Store) applyMigration(ctx context.Context, m migration) error {
 }
 
 func (s *Store) HasKey(ctx context.Context, fingerprint string) (bool, error) {
+	if err := s.validate(ctx); err != nil {
+		return false, err
+	}
 	if isBlank(fingerprint) {
 		return false, errors.New("key fingerprint must be set")
 	}
@@ -106,6 +115,9 @@ func (s *Store) HasKey(ctx context.Context, fingerprint string) (bool, error) {
 }
 
 func (s *Store) EnsureUserAndKey(ctx context.Context, username, fingerprint, publicKey string) (string, error) {
+	if err := s.validate(ctx); err != nil {
+		return "", err
+	}
 	if isBlank(username) {
 		return "", errors.New("username must be set")
 	}
@@ -163,6 +175,9 @@ ON CONFLICT(fingerprint) DO UPDATE SET
 }
 
 func (s *Store) CreateSession(ctx context.Context, session Session) error {
+	if err := s.validate(ctx); err != nil {
+		return err
+	}
 	if isBlank(session.ID) {
 		return errors.New("session ID must be set")
 	}
@@ -187,6 +202,9 @@ VALUES(?, ?, ?, ?, ?, ?)`, session.ID, session.UserID, session.KeyFingerprint, s
 }
 
 func (s *Store) EndSession(ctx context.Context, sessionID, status string) error {
+	if err := s.validate(ctx); err != nil {
+		return err
+	}
 	if isBlank(sessionID) {
 		return errors.New("session ID must be set")
 	}
@@ -197,6 +215,9 @@ func (s *Store) EndSession(ctx context.Context, sessionID, status string) error 
 }
 
 func (s *Store) AttachVM(ctx context.Context, sessionID, vmID string) error {
+	if err := s.validate(ctx); err != nil {
+		return err
+	}
 	if isBlank(sessionID) {
 		return errors.New("session ID must be set")
 	}
@@ -207,6 +228,9 @@ func (s *Store) AttachVM(ctx context.Context, sessionID, vmID string) error {
 }
 
 func (s *Store) CreateVM(ctx context.Context, vm VM) error {
+	if err := s.validate(ctx); err != nil {
+		return err
+	}
 	if isBlank(vm.ID) {
 		return errors.New("VM ID must be set")
 	}
@@ -225,6 +249,9 @@ VALUES(?, ?, ?, ?, ?)`, vm.ID, vm.SessionID, vm.StateDir, vm.FCPid, vm.StartedAt
 }
 
 func (s *Store) EndVM(ctx context.Context, vmID string, exitStatus int) error {
+	if err := s.validate(ctx); err != nil {
+		return err
+	}
 	if isBlank(vmID) {
 		return errors.New("VM ID must be set")
 	}
@@ -232,6 +259,9 @@ func (s *Store) EndVM(ctx context.Context, vmID string, exitStatus int) error {
 }
 
 func (s *Store) Audit(ctx context.Context, eventType, dataJSON string) error {
+	if err := s.validate(ctx); err != nil {
+		return err
+	}
 	if isBlank(eventType) {
 		return errors.New("audit event type must be set")
 	}
@@ -249,6 +279,16 @@ func now() string {
 
 func isBlank(value string) bool {
 	return strings.TrimSpace(value) == ""
+}
+
+func (s *Store) validate(ctx context.Context) error {
+	if s == nil || s.db == nil {
+		return errors.New("store must be set")
+	}
+	if ctx == nil {
+		return errors.New("context must be set")
+	}
+	return nil
 }
 
 type execer interface {
