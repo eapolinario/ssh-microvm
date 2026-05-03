@@ -297,6 +297,11 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			args:    requiredArgs("--guest-ip", "172.16.0.2", "--host-ip", "172.16.0.2"),
 			wantErr: "--guest-ip and --host-ip must be different",
 		},
+		{
+			name:    "guest and host ip on different slash24 networks",
+			args:    requiredArgs("--guest-ip", "172.16.1.2", "--host-ip", "172.16.0.1"),
+			wantErr: "--guest-ip and --host-ip must be in the same /24 network",
+		},
 	}
 
 	for _, tt := range tests {

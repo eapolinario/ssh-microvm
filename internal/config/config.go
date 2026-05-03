@@ -128,6 +128,9 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if cfg.GuestIP == cfg.HostIP {
 		return nil, errors.New("--guest-ip and --host-ip must be different")
 	}
+	if !sameIPv4Slash24(cfg.GuestIP, cfg.HostIP) {
+		return nil, errors.New("--guest-ip and --host-ip must be in the same /24 network")
+	}
 
 	return cfg, nil
 }
@@ -156,6 +159,15 @@ func isIPv4(value string) bool {
 	ip := net.ParseIP(value)
 	ipv4 := ip.To4()
 	return ipv4 != nil && value == ipv4.String()
+}
+
+func sameIPv4Slash24(a, b string) bool {
+	ipA := net.ParseIP(a).To4()
+	ipB := net.ParseIP(b).To4()
+	if ipA == nil || ipB == nil {
+		return false
+	}
+	return ipA[0] == ipB[0] && ipA[1] == ipB[1] && ipA[2] == ipB[2]
 }
 
 func validateListenAddr(value string) error {
