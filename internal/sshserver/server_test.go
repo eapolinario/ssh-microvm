@@ -1346,6 +1346,13 @@ func TestWaitForPortRejectsInvalidState(t *testing.T) {
 			wantErr: "guest port address port must be valid",
 		},
 		{
+			name:    "unresolvable address",
+			addr:    "999.0.0.1:22",
+			timeout: time.Second,
+			dial:    validDial,
+			wantErr: "guest port address must resolve to a valid TCP address",
+		},
+		{
 			name:    "zero timeout",
 			addr:    "127.0.0.1:22",
 			timeout: 0,

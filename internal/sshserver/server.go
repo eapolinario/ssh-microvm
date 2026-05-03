@@ -770,6 +770,9 @@ func waitForPortWithDial(addr string, timeout time.Duration, dial func(string, t
 	} else if _, err := net.LookupPort("tcp", port); err != nil {
 		return fmt.Errorf("guest port address port must be valid: %s", port)
 	}
+	if _, err := net.ResolveTCPAddr("tcp", addr); err != nil {
+		return fmt.Errorf("guest port address must resolve to a valid TCP address: %s", addr)
+	}
 	if timeout <= 0 {
 		return errors.New("guest port timeout must be positive")
 	}
