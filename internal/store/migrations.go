@@ -1158,4 +1158,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 48,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_insert_single_line
+BEFORE INSERT ON keys
+WHEN instr(NEW.public_key, char(10)) > 0
+OR instr(NEW.public_key, char(13)) > 0
+BEGIN
+	SELECT RAISE(ABORT, 'public key must contain exactly one authorized key');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_public_key_update_single_line
+BEFORE UPDATE OF public_key ON keys
+WHEN instr(NEW.public_key, char(10)) > 0
+OR instr(NEW.public_key, char(13)) > 0
+BEGIN
+	SELECT RAISE(ABORT, 'public key must contain exactly one authorized key');
+END;
+`,
+	},
 }
