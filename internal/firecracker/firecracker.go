@@ -239,8 +239,12 @@ func setupTap(ctx context.Context, tapName, hostIP string) error {
 	if strings.TrimSpace(tapName) == "" {
 		return errors.New("tap name is empty")
 	}
-	if strings.TrimSpace(hostIP) == "" {
+	hostIP = strings.TrimSpace(hostIP)
+	if hostIP == "" {
 		return errors.New("host IP is empty")
+	}
+	if !isIPv4(hostIP) {
+		return fmt.Errorf("host IP must be a valid IPv4 address: %s", hostIP)
 	}
 	if err := runCmd(ctx, "sudo", "ip", "tuntap", "add", "dev", tapName, "mode", "tap"); err != nil {
 		return err
@@ -310,6 +314,12 @@ func sanitizeTapNamePart(value string) string {
 		}
 	}
 	return b.String()
+}
+
+func isIPv4(value string) bool {
+	ip := net.ParseIP(value)
+	ipv4 := ip.To4()
+	return ipv4 != nil && value == ipv4.String()
 }
 
 func waitForSocket(path string, timeout time.Duration) error {

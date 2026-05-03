@@ -312,6 +312,13 @@ func TestTapCommandHelpersRejectInvalidState(t *testing.T) {
 			wantErr: "host IP is empty",
 		},
 		{
+			name: "setupTap invalid host IP",
+			run: func() error {
+				return setupTap(context.Background(), "tap0", "not-an-ip")
+			},
+			wantErr: "host IP must be a valid IPv4 address",
+		},
+		{
 			name: "teardownTap nil context",
 			run: func() error {
 				return teardownTap(nil, "tap0")
