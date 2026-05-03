@@ -229,6 +229,9 @@ func (s *Store) CreateSession(ctx context.Context, session Session) error {
 	if hasSurroundingWhitespace(session.Status) {
 		return errors.New("session status must not contain surrounding whitespace")
 	}
+	if session.Status != "active" {
+		return errors.New("session status must be active")
+	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
 VALUES(?, ?, ?, ?, ?, ?)`, session.ID, session.UserID, session.KeyFingerprint, session.RemoteAddr, session.StartedAt, session.Status)
 	return err
@@ -249,6 +252,9 @@ func (s *Store) EndSession(ctx context.Context, sessionID, status string) error 
 	}
 	if hasSurroundingWhitespace(status) {
 		return errors.New("session status must not contain surrounding whitespace")
+	}
+	if status != "closed" && status != "vm_failed" {
+		return errors.New("session end status must be closed or vm_failed")
 	}
 	return execOne(ctx, s.db, `UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?`, now(), status, sessionID)
 }

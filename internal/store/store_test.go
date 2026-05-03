@@ -605,6 +605,41 @@ func TestCreateSessionRejectsInvalidStartTime(t *testing.T) {
 	}
 }
 
+func TestCreateSessionRejectsUnsupportedStatus(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "closed",
+	}
+	err = st.CreateSession(ctx, session)
+	if err == nil {
+		t.Fatalf("CreateSession accepted unsupported status")
+	}
+	if !strings.Contains(err.Error(), "session status must be active") {
+		t.Fatalf("CreateSession error = %q, want initial status validation error", err)
+	}
+
+	var sessionCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions")
+	if err := row.Scan(&sessionCount); err != nil {
+		t.Fatalf("query sessions: %v", err)
+	}
+	if sessionCount != 0 {
+		t.Fatalf("unsupported status CreateSession inserted sessions=%d, want 0", sessionCount)
+	}
+}
+
 func TestEnsureUserAndKeyRejectsBlankInputs(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -1004,6 +1039,50 @@ func TestEndVMRejectsNegativeExitStatus(t *testing.T) {
 	}
 	if exitStatus.Valid {
 		t.Fatalf("EndVM set exit_status for invalid exit status: %d", exitStatus.Int64)
+	}
+}
+
+func TestEndSessionRejectsUnsupportedTerminalStatus(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	err = st.EndSession(ctx, session.ID, "active")
+	if err == nil {
+		t.Fatalf("EndSession accepted unsupported terminal status")
+	}
+	if !strings.Contains(err.Error(), "session end status must be closed or vm_failed") {
+		t.Fatalf("EndSession error = %q, want terminal status validation error", err)
+	}
+
+	var (
+		status  string
+		endedAt sql.NullString
+	)
+	row := st.db.QueryRowContext(ctx, "SELECT status, ended_at FROM sessions WHERE id = ?", session.ID)
+	if err := row.Scan(&status, &endedAt); err != nil {
+		t.Fatalf("query session lifecycle state: %v", err)
+	}
+	if status != "active" {
+		t.Fatalf("session status = %q, want active", status)
+	}
+	if endedAt.Valid {
+		t.Fatalf("EndSession set ended_at for invalid terminal status: %q", endedAt.String)
 	}
 }
 
