@@ -154,7 +154,8 @@ func normalizeStringFields(cfg *Config) {
 
 func isIPv4(value string) bool {
 	ip := net.ParseIP(value)
-	return ip != nil && ip.To4() != nil
+	ipv4 := ip.To4()
+	return ipv4 != nil && value == ipv4.String()
 }
 
 func validateListenAddr(value string) error {

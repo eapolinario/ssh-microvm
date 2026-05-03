@@ -283,6 +283,16 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			wantErr: "--guest-ip must be a valid IPv4 address: 2001:db8::2",
 		},
 		{
+			name:    "ipv4 mapped ipv6 guest ip",
+			args:    requiredArgs("--guest-ip", "::ffff:172.16.0.2"),
+			wantErr: "--guest-ip must be a valid IPv4 address: ::ffff:172.16.0.2",
+		},
+		{
+			name:    "ipv4 mapped ipv6 host ip",
+			args:    requiredArgs("--host-ip", "::ffff:172.16.0.1"),
+			wantErr: "--host-ip must be a valid IPv4 address: ::ffff:172.16.0.1",
+		},
+		{
 			name:    "same guest and host ip",
 			args:    requiredArgs("--guest-ip", "172.16.0.2", "--host-ip", "172.16.0.2"),
 			wantErr: "--guest-ip and --host-ip must be different",
