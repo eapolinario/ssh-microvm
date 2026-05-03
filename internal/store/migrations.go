@@ -654,4 +654,22 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 25,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_data_json_insert_json
+BEFORE INSERT ON audit_events
+WHEN json_valid(NEW.data_json) != 1
+BEGIN
+	SELECT RAISE(ABORT, 'audit data must be valid JSON');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_data_json_update_json
+BEFORE UPDATE OF data_json ON audit_events
+WHEN json_valid(NEW.data_json) != 1
+BEGIN
+	SELECT RAISE(ABORT, 'audit data must be valid JSON');
+END;
+`,
+	},
 }
