@@ -49,6 +49,15 @@ func New(cfg *config.Config, st *store.Store, manager *firecracker.Manager) (*Se
 }
 
 func (s *Server) Serve(ctx context.Context) error {
+	if s == nil {
+		return errors.New("server must be set")
+	}
+	if s.cfg == nil {
+		return errors.New("config must be set")
+	}
+	if ctx == nil {
+		return errors.New("context must be set")
+	}
 	ln, err := net.Listen("tcp", s.cfg.ListenAddr)
 	if err != nil {
 		return err
@@ -57,6 +66,15 @@ func (s *Server) Serve(ctx context.Context) error {
 }
 
 func (s *Server) ServeListener(ctx context.Context, ln net.Listener) error {
+	if s == nil {
+		return errors.New("server must be set")
+	}
+	if ctx == nil {
+		return errors.New("context must be set")
+	}
+	if ln == nil {
+		return errors.New("listener must be set")
+	}
 	defer ln.Close()
 
 	go func() {

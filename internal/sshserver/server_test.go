@@ -43,6 +43,85 @@ func TestServeListenerReturnsOnContextCancellation(t *testing.T) {
 	}
 }
 
+func TestServeRejectsNilDependencies(t *testing.T) {
+	tests := []struct {
+		name    string
+		server  *Server
+		ctx     context.Context
+		wantErr string
+	}{
+		{
+			name:    "nil server",
+			ctx:     context.Background(),
+			wantErr: "server must be set",
+		},
+		{
+			name:    "nil config",
+			server:  &Server{},
+			ctx:     context.Background(),
+			wantErr: "config must be set",
+		},
+		{
+			name:    "nil context",
+			server:  &Server{cfg: &config.Config{ListenAddr: "127.0.0.1:0"}},
+			wantErr: "context must be set",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.server.Serve(tt.ctx)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Serve error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestServeListenerRejectsNilDependencies(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer ln.Close()
+
+	tests := []struct {
+		name    string
+		server  *Server
+		ctx     context.Context
+		ln      net.Listener
+		wantErr string
+	}{
+		{
+			name:    "nil server",
+			ctx:     context.Background(),
+			ln:      ln,
+			wantErr: "server must be set",
+		},
+		{
+			name:    "nil context",
+			server:  &Server{},
+			ln:      ln,
+			wantErr: "context must be set",
+		},
+		{
+			name:    "nil listener",
+			server:  &Server{},
+			ctx:     context.Background(),
+			wantErr: "listener must be set",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.server.ServeListener(tt.ctx, tt.ln)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("ServeListener error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestNewRejectsNilDependencies(t *testing.T) {
 	cfg := &config.Config{HostKeyPath: filepath.Join(t.TempDir(), "ssh_host_ed25519")}
 	st := newTestStore(t)
