@@ -34,6 +34,8 @@ type VM struct {
 	logFile  *os.File
 }
 
+const firecrackerAPITimeout = 5 * time.Second
+
 func NewManager(cfg *config.Config) *Manager {
 	return &Manager{cfg: cfg}
 }
@@ -305,7 +307,7 @@ func newUnixClient(sock string) *http.Client {
 			return (&net.Dialer{}).DialContext(ctx, "unix", sock)
 		},
 	}
-	return &http.Client{Transport: transport}
+	return &http.Client{Transport: transport, Timeout: firecrackerAPITimeout}
 }
 
 func putJSON(client *http.Client, path string, payload any) error {

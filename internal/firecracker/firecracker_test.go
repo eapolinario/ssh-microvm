@@ -232,6 +232,14 @@ func TestPutJSONOverUnixSocket(t *testing.T) {
 	}
 }
 
+func TestNewUnixClientSetsRequestTimeout(t *testing.T) {
+	client := newUnixClient(filepath.Join(t.TempDir(), "firecracker.sock"))
+
+	if client.Timeout != firecrackerAPITimeout {
+		t.Fatalf("newUnixClient() timeout = %v, want %v", client.Timeout, firecrackerAPITimeout)
+	}
+}
+
 func TestPutJSONReturnsAPIErrorBody(t *testing.T) {
 	socketPath := t.TempDir() + "/firecracker.sock"
 	server := newUnixHTTPServer(t, socketPath, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
