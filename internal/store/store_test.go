@@ -1485,6 +1485,71 @@ func TestEndSessionRejectsClosedStatusWithActiveAttachedVM(t *testing.T) {
 	}
 }
 
+func TestEndSessionRejectsVMFailedStatusWithActiveAttachedVM(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: testKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	vm := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	if err := st.CreateVM(ctx, vm); err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+	if err := st.AttachVM(ctx, session.ID, vm.ID); err != nil {
+		t.Fatalf("AttachVM: %v", err)
+	}
+
+	err = st.EndSession(ctx, session.ID, "vm_failed")
+	if err != sql.ErrNoRows {
+		t.Fatalf("EndSession vm_failed with active attached VM error = %v, want sql.ErrNoRows", err)
+	}
+
+	var (
+		status     string
+		endedAt    sql.NullString
+		attachedVM string
+	)
+	row := st.db.QueryRowContext(ctx, "SELECT status, ended_at, vm_id FROM sessions WHERE id = ?", session.ID)
+	if err := row.Scan(&status, &endedAt, &attachedVM); err != nil {
+		t.Fatalf("query session lifecycle state: %v", err)
+	}
+	if status != "active" {
+		t.Fatalf("session status = %q, want active", status)
+	}
+	if endedAt.Valid {
+		t.Fatalf("EndSession set ended_at while attached VM was active: %q", endedAt.String)
+	}
+	if attachedVM != vm.ID {
+		t.Fatalf("session vm_id = %q, want attached VM %q", attachedVM, vm.ID)
+	}
+
+	if err := st.EndVM(ctx, vm.ID, 1); err != nil {
+		t.Fatalf("EndVM: %v", err)
+	}
+	if err := st.EndSession(ctx, session.ID, "vm_failed"); err != nil {
+		t.Fatalf("EndSession after VM ended: %v", err)
+	}
+}
+
 func TestAttachVMRequiresExistingVM(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
