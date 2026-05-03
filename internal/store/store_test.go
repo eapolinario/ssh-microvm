@@ -228,6 +228,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 29 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 30")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 30: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 30 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -332,6 +339,48 @@ func TestEnsureSchemaEnforcesUserCreatedAtValues(t *testing.T) {
 	}
 	if gotCreatedAt != createdAt {
 		t.Fatalf("user created_at = %q, want %q", gotCreatedAt, createdAt)
+	}
+}
+
+func TestEnsureSchemaEnforcesUserCreatedAtFormat(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	for _, tt := range []struct {
+		name      string
+		userID    string
+		createdAt string
+	}{
+		{name: "space separated creation time", userID: "bad-space-created-at", createdAt: "2026-05-03 14:03:32"},
+		{name: "missing timezone creation time", userID: "bad-missing-timezone-created-at", createdAt: "2026-05-03T14:03:32"},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", tt.userID, tt.userID, tt.createdAt, now()); err == nil {
+				t.Fatalf("inserted user with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	createdAt := "2026-05-03T14:03:32Z"
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", createdAt, now()); err != nil {
+		t.Fatalf("insert valid user: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE users SET created_at = ? WHERE id = ?", "2026-05-03 14:03:32", "user-1"); err == nil {
+		t.Fatalf("updated user to space separated creation time, want trigger error")
+	}
+
+	validOffsetTime := "2026-05-03T14:03:32-04:00"
+	if _, err := st.db.ExecContext(ctx, "UPDATE users SET created_at = ? WHERE id = ?", validOffsetTime, "user-1"); err != nil {
+		t.Fatalf("updated user to valid offset creation time: %v", err)
+	}
+
+	var gotCreatedAt string
+	row := st.db.QueryRowContext(ctx, "SELECT created_at FROM users WHERE id = ?", "user-1")
+	if err := row.Scan(&gotCreatedAt); err != nil {
+		t.Fatalf("query user created_at: %v", err)
+	}
+	if gotCreatedAt != validOffsetTime {
+		t.Fatalf("user created_at = %q, want %q", gotCreatedAt, validOffsetTime)
 	}
 }
 

@@ -760,4 +760,32 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 30,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_users_created_at_insert_rfc3339
+BEFORE INSERT ON users
+WHEN julianday(NEW.created_at) IS NULL
+OR instr(NEW.created_at, 'T') != 11
+OR (
+	substr(NEW.created_at, -1) != 'Z'
+	AND substr(NEW.created_at, -6, 1) NOT IN ('+', '-')
+)
+BEGIN
+	SELECT RAISE(ABORT, 'user creation time must be a valid RFC3339 timestamp');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_users_created_at_update_rfc3339
+BEFORE UPDATE OF created_at ON users
+WHEN julianday(NEW.created_at) IS NULL
+OR instr(NEW.created_at, 'T') != 11
+OR (
+	substr(NEW.created_at, -1) != 'Z'
+	AND substr(NEW.created_at, -6, 1) NOT IN ('+', '-')
+)
+BEGIN
+	SELECT RAISE(ABORT, 'user creation time must be a valid RFC3339 timestamp');
+END;
+`,
+	},
 }
