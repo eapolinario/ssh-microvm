@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -32,6 +33,25 @@ func TestStopWithoutProcessDoesNotPanic(t *testing.T) {
 
 	if err := vm.Stop(context.Background(), time.Second); err != nil {
 		t.Fatalf("Stop without process returned error: %v", err)
+	}
+	if _, err := logFile.WriteString("after stop"); err == nil {
+		t.Fatalf("Stop did not close the VM log file")
+	}
+}
+
+func TestStopTreatsGracefulSIGTERMAsSuccess(t *testing.T) {
+	logFile, err := os.Create(filepath.Join(t.TempDir(), "firecracker.log"))
+	if err != nil {
+		t.Fatalf("create log file: %v", err)
+	}
+	cmd := exec.Command("sleep", "10")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start test process: %v", err)
+	}
+	vm := &VM{Cmd: cmd, logFile: logFile}
+
+	if err := vm.Stop(context.Background(), 5*time.Second); err != nil {
+		t.Fatalf("Stop returned error for graceful SIGTERM shutdown: %v", err)
 	}
 	if _, err := logFile.WriteString("after stop"); err == nil {
 		t.Fatalf("Stop did not close the VM log file")

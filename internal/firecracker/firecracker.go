@@ -156,6 +156,9 @@ func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
 		return errors.New("firecracker shutdown timeout")
 	case err := <-done:
 		_ = teardownTap(context.Background(), v.TapName)
+		if wasSignal(err, syscall.SIGTERM) {
+			return nil
+		}
 		return err
 	}
 }
@@ -166,6 +169,15 @@ func (v *VM) closeLog() {
 	}
 	_ = v.logFile.Close()
 	v.logFile = nil
+}
+
+func wasSignal(err error, signal syscall.Signal) bool {
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		return false
+	}
+	status, ok := exitErr.Sys().(syscall.WaitStatus)
+	return ok && status.Signaled() && status.Signal() == signal
 }
 
 func buildBootArgs(cfg *config.Config) string {
