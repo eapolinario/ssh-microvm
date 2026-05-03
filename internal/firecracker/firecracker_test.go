@@ -79,6 +79,31 @@ func TestStopRejectsNonPositiveGracefulTimeout(t *testing.T) {
 	}
 }
 
+func TestStopRejectsNonPositiveProcessPIDBeforeSideEffects(t *testing.T) {
+	tests := []struct {
+		name string
+		pid  int
+	}{
+		{name: "zero PID", pid: 0},
+		{name: "negative PID", pid: -1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vm := &VM{
+				Cmd: &exec.Cmd{Process: &os.Process{Pid: tt.pid}},
+				// If PID validation does not run first, this would reach tap teardown validation.
+				TapName: "tap/bad",
+			}
+
+			err := vm.Stop(context.Background(), time.Second)
+			if err == nil || !strings.Contains(err.Error(), "firecracker process PID must be > 0") {
+				t.Fatalf("Stop error = %v, want PID validation error", err)
+			}
+		})
+	}
+}
+
 func TestStopTreatsGracefulSIGTERMAsSuccess(t *testing.T) {
 	logFile, err := os.Create(filepath.Join(t.TempDir(), "firecracker.log"))
 	if err != nil {

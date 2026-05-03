@@ -231,6 +231,9 @@ func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
 	if v.Cmd == nil || v.Cmd.Process == nil {
 		return v.teardownTap()
 	}
+	if v.Cmd.Process.Pid <= 0 {
+		return errors.New("firecracker process PID must be > 0")
+	}
 	if v.Cmd.ProcessState != nil {
 		return v.teardownTap()
 	}
