@@ -308,6 +308,56 @@ func TestNewRejectsNilDependencies(t *testing.T) {
 	}
 }
 
+func TestStopVMRejectsInvalidState(t *testing.T) {
+	validServer := &Server{cfg: &config.Config{GracefulStopS: 1}}
+	validVM := &firecracker.VM{}
+
+	tests := []struct {
+		name    string
+		server  *Server
+		vm      *firecracker.VM
+		wantErr string
+	}{
+		{
+			name:    "nil server",
+			vm:      validVM,
+			wantErr: "server must be set",
+		},
+		{
+			name:    "nil config",
+			server:  &Server{},
+			vm:      validVM,
+			wantErr: "config must be set",
+		},
+		{
+			name:    "nil VM",
+			server:  validServer,
+			wantErr: "vm not available",
+		},
+		{
+			name:    "non-positive graceful shutdown timeout",
+			server:  &Server{cfg: &config.Config{}},
+			vm:      validVM,
+			wantErr: "graceful shutdown timeout must be > 0",
+		},
+		{
+			name:    "invalid tap name",
+			server:  validServer,
+			vm:      &firecracker.VM{TapName: "tap/bad"},
+			wantErr: "tap name must contain only ASCII letters and digits",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.server.stopVM(tt.vm)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("stopVM error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestLoadOrCreateHostKeyCreatesAndReusesKey(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "ssh_host_ed25519")
 

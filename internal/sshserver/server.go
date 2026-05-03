@@ -207,11 +207,30 @@ func (s *Server) handleConn(ctx context.Context, netConn net.Conn) {
 		log.Printf("ssh connection ended: %v", err)
 	}
 
-	stopCtx, cancel := context.WithTimeout(context.Background(), time.Duration(s.cfg.GracefulStopS)*time.Second)
-	defer cancel()
-	_ = vm.Stop(stopCtx, time.Duration(s.cfg.GracefulStopS)*time.Second)
+	if err := s.stopVM(vm); err != nil {
+		log.Printf("firecracker stop error: %v", err)
+	}
 	_ = s.store.EndVM(ctx, vm.ID, 0)
 	_ = s.store.EndSession(ctx, sessionID, "closed")
+}
+
+func (s *Server) stopVM(vm *firecracker.VM) error {
+	if s == nil {
+		return errors.New("server must be set")
+	}
+	if s.cfg == nil {
+		return errors.New("config must be set")
+	}
+	if vm == nil {
+		return errors.New("vm not available")
+	}
+	if s.cfg.GracefulStopS <= 0 {
+		return errors.New("graceful shutdown timeout must be > 0")
+	}
+	graceful := time.Duration(s.cfg.GracefulStopS) * time.Second
+	stopCtx, cancel := context.WithTimeout(context.Background(), graceful)
+	defer cancel()
+	return vm.Stop(stopCtx, graceful)
 }
 
 func (s *Server) handleChannels(channels <-chan ssh.NewChannel, vm *firecracker.VM) {
