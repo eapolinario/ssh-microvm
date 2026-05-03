@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -228,7 +229,19 @@ func (s *Server) handleChannels(channels <-chan ssh.NewChannel, vm *firecracker.
 }
 
 func (s *Server) handleSession(ch ssh.Channel, requests <-chan *ssh.Request, vm *firecracker.VM) {
+	if isNilSSHChannel(ch) {
+		log.Printf("ssh session rejected: channel must be set")
+		return
+	}
 	defer ch.Close()
+	if requests == nil {
+		log.Printf("ssh session rejected: requests must be set")
+		return
+	}
+	if vm == nil {
+		log.Printf("ssh session rejected: vm not available")
+		return
+	}
 
 	var (
 		ptyReq    *ptyRequest
@@ -279,6 +292,19 @@ func (s *Server) handleSession(ch ssh.Channel, requests <-chan *ssh.Request, vm 
 		default:
 			_ = req.Reply(false, nil)
 		}
+	}
+}
+
+func isNilSSHChannel(ch ssh.Channel) bool {
+	if ch == nil {
+		return true
+	}
+	v := reflect.ValueOf(ch)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
 	}
 }
 
@@ -484,7 +510,7 @@ func (s *Server) validateGuestProxy(ch ssh.Channel, vm *firecracker.VM) error {
 	if s.cfg == nil {
 		return errors.New("config must be set")
 	}
-	if ch == nil {
+	if isNilSSHChannel(ch) {
 		return errors.New("ssh channel must be set")
 	}
 	if vm == nil {

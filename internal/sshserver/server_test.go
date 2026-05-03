@@ -619,6 +619,58 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 	}
 }
 
+func TestHandleSessionRejectsInvalidState(t *testing.T) {
+	validRequests := make(chan *ssh.Request)
+	close(validRequests)
+	validVM := &firecracker.VM{GuestIP: "127.0.0.1"}
+
+	tests := []struct {
+		name       string
+		channel    *testSSHChannel
+		requests   <-chan *ssh.Request
+		vm         *firecracker.VM
+		wantClosed bool
+	}{
+		{
+			name:     "nil channel",
+			requests: validRequests,
+			vm:       validVM,
+		},
+		{
+			name:       "nil requests",
+			channel:    &testSSHChannel{},
+			vm:         validVM,
+			wantClosed: true,
+		},
+		{
+			name:       "nil VM",
+			channel:    &testSSHChannel{},
+			requests:   validRequests,
+			wantClosed: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			done := make(chan struct{})
+			go func() {
+				(&Server{}).handleSession(tt.channel, tt.requests, tt.vm)
+				close(done)
+			}()
+
+			select {
+			case <-done:
+			case <-time.After(100 * time.Millisecond):
+				t.Fatalf("handleSession did not return for invalid state")
+			}
+
+			if tt.channel != nil && tt.channel.closed != tt.wantClosed {
+				t.Fatalf("channel closed = %t, want %t", tt.channel.closed, tt.wantClosed)
+			}
+		})
+	}
+}
+
 func TestDialGuestRejectsInvalidState(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -835,9 +887,11 @@ func assertPermissionExtension(t *testing.T, perms *ssh.Permissions, key, want s
 
 type testSSHChannel struct {
 	bytes.Buffer
+	closed bool
 }
 
 func (c *testSSHChannel) Close() error {
+	c.closed = true
 	return nil
 }
 
