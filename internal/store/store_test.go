@@ -298,6 +298,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 39 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 40")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 40: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 40 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -354,6 +361,59 @@ func TestEnsureSchemaEnforcesUserIDValues(t *testing.T) {
 	}
 	if gotUserID != userID {
 		t.Fatalf("user id = %q, want %q", gotUserID, userID)
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionIDValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		sessionID string
+	}{
+		{name: "blank session ID", sessionID: " \t "},
+		{name: "padded session ID", sessionID: " session-1 "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, tt.sessionID, userID, testKeyFingerprint, "127.0.0.1:2222", now(), "active"); err == nil {
+				t.Fatalf("inserted session with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	sessionID := "session-1"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, sessionID, userID, testKeyFingerprint, "127.0.0.1:2222", now(), "active"); err != nil {
+		t.Fatalf("insert valid session: %v", err)
+	}
+	for _, tt := range []struct {
+		name      string
+		sessionID string
+	}{
+		{name: "blank session ID", sessionID: "\n\t"},
+		{name: "padded session ID", sessionID: "\tsession-2\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET id = ? WHERE id = ?", tt.sessionID, sessionID); err == nil {
+				t.Fatalf("updated session to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotSessionID string
+	row := st.db.QueryRowContext(ctx, "SELECT id FROM sessions WHERE id = ?", sessionID)
+	if err := row.Scan(&gotSessionID); err != nil {
+		t.Fatalf("query session ID: %v", err)
+	}
+	if gotSessionID != sessionID {
+		t.Fatalf("session id = %q, want %q", gotSessionID, sessionID)
 	}
 }
 

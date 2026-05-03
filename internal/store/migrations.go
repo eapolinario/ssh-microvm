@@ -992,4 +992,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 40,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_id_insert_valid
+BEFORE INSERT ON sessions
+WHEN trim(NEW.id, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.id != trim(NEW.id, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'session ID must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_id_update_valid
+BEFORE UPDATE OF id ON sessions
+WHEN trim(NEW.id, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.id != trim(NEW.id, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'session ID must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
