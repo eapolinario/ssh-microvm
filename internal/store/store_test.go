@@ -1538,10 +1538,12 @@ func TestAttachVMRejectsAlreadyAttachedSession(t *testing.T) {
 			StartedAt: now(),
 		},
 	}
-	for _, vm := range vms {
-		if err := st.CreateVM(ctx, vm); err != nil {
-			t.Fatalf("CreateVM %s: %v", vm.ID, err)
-		}
+	if err := st.CreateVM(ctx, vms[0]); err != nil {
+		t.Fatalf("CreateVM first VM: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, vms[1].ID, vms[1].SessionID, vms[1].StateDir, vms[1].FCPid, vms[1].StartedAt); err != nil {
+		t.Fatalf("insert second VM fixture: %v", err)
 	}
 	if err := st.AttachVM(ctx, session.ID, vms[0].ID); err != nil {
 		t.Fatalf("AttachVM first VM: %v", err)
@@ -1559,6 +1561,68 @@ func TestAttachVMRejectsAlreadyAttachedSession(t *testing.T) {
 	}
 	if attachedVM != vms[0].ID {
 		t.Fatalf("session vm_id = %q, want original VM %q", attachedVM, vms[0].ID)
+	}
+}
+
+func TestCreateVMRejectsSecondVMForSession(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: testKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	vm := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	if err := st.CreateVM(ctx, vm); err != nil {
+		t.Fatalf("CreateVM first VM: %v", err)
+	}
+
+	otherVM := VM{
+		ID:        "vm-2",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-2"),
+		FCPid:     1235,
+		StartedAt: now(),
+	}
+	err = st.CreateVM(ctx, otherVM)
+	if err != sql.ErrNoRows {
+		t.Fatalf("CreateVM second VM error = %v, want sql.ErrNoRows", err)
+	}
+
+	var (
+		vmCount    int
+		attachedVM sql.NullString
+	)
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM vms WHERE session_id = ?", session.ID)
+	if err := row.Scan(&vmCount); err != nil {
+		t.Fatalf("query session VMs: %v", err)
+	}
+	if vmCount != 1 {
+		t.Fatalf("CreateVM inserted VMs for session=%d, want 1", vmCount)
+	}
+	row = st.db.QueryRowContext(ctx, "SELECT vm_id FROM sessions WHERE id = ?", session.ID)
+	if err := row.Scan(&attachedVM); err != nil {
+		t.Fatalf("query attached VM: %v", err)
+	}
+	if attachedVM.Valid {
+		t.Fatalf("CreateVM attached VM unexpectedly to %q", attachedVM.String)
 	}
 }
 

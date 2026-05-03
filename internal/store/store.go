@@ -340,7 +340,8 @@ func (s *Store) CreateVM(ctx context.Context, vm VM) error {
 	}
 	return execOne(ctx, s.db, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
 SELECT ?, ?, ?, ?, ?
-WHERE EXISTS (SELECT 1 FROM sessions WHERE id = ? AND status = 'active' AND ended_at IS NULL AND vm_id IS NULL)`, vm.ID, vm.SessionID, vm.StateDir, vm.FCPid, vm.StartedAt, vm.SessionID)
+WHERE EXISTS (SELECT 1 FROM sessions WHERE id = ? AND status = 'active' AND ended_at IS NULL AND vm_id IS NULL)
+AND NOT EXISTS (SELECT 1 FROM vms WHERE session_id = ?)`, vm.ID, vm.SessionID, vm.StateDir, vm.FCPid, vm.StartedAt, vm.SessionID, vm.SessionID)
 }
 
 func (s *Store) EndVM(ctx context.Context, vmID string, exitStatus int) error {
