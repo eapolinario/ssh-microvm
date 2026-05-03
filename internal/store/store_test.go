@@ -816,12 +816,33 @@ func TestEnsureUserAndKeyRejectsInvalidPublicKey(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	_, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
-	if err == nil {
-		t.Fatalf("EnsureUserAndKey accepted an invalid public key")
+	tests := []struct {
+		name      string
+		publicKey string
+		wantErr   string
+	}{
+		{
+			name:      "malformed public key",
+			publicKey: "ssh-ed25519 AAAA alice",
+			wantErr:   "public key must be a valid authorized key",
+		},
+		{
+			name:      "multiple public keys",
+			publicKey: testAuthorizedKey + "\n" + testAuthorizedKey,
+			wantErr:   "public key must contain exactly one authorized key",
+		},
 	}
-	if !strings.Contains(err.Error(), "public key must be a valid authorized key") {
-		t.Fatalf("EnsureUserAndKey error = %q, want public key validation error", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", tt.publicKey)
+			if err == nil {
+				t.Fatalf("EnsureUserAndKey accepted %s", tt.name)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("EnsureUserAndKey error = %q, want containing %q", err, tt.wantErr)
+			}
+		})
 	}
 
 	var userCount, keyCount int
