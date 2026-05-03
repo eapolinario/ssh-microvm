@@ -118,9 +118,19 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			wantErr: "--listen port must be valid: not-a-port",
 		},
 		{
+			name:    "missing state dir",
+			args:    requiredArgs("--state-dir", ""),
+			wantErr: "--state-dir must be set",
+		},
+		{
 			name:    "invalid auth mode",
 			args:    requiredArgs("--auth-mode", "invalid"),
 			wantErr: "invalid --auth-mode: invalid",
+		},
+		{
+			name:    "missing firecracker binary",
+			args:    requiredArgs("--firecracker", ""),
+			wantErr: "--firecracker must be set",
 		},
 		{
 			name:    "non-positive vcpu",

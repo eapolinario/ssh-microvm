@@ -75,6 +75,9 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 		return nil, err
 	}
 
+	if cfg.StateDir == "" {
+		return nil, errors.New("--state-dir must be set")
+	}
 	if cfg.DBPath == "" {
 		cfg.DBPath = filepath.Join(cfg.StateDir, "db.sqlite")
 	}
@@ -92,6 +95,9 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	}
 	if cfg.AuthMode != AuthModeAutoEnroll && cfg.AuthMode != AuthModeKnownKeys {
 		return nil, fmt.Errorf("invalid --auth-mode: %s", cfg.AuthMode)
+	}
+	if cfg.Firecracker == "" {
+		return nil, errors.New("--firecracker must be set")
 	}
 	if cfg.VCPUCount <= 0 {
 		return nil, errors.New("--vcpu must be > 0")
