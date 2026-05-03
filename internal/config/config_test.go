@@ -91,6 +91,24 @@ func TestLoadFromArgsAppliesExplicitOverrides(t *testing.T) {
 	}
 }
 
+func TestLoadFromArgsDerivesBlankOptionalPaths(t *testing.T) {
+	stateDir := t.TempDir()
+
+	cfg, err := loadFromArgs([]string{
+		"--state-dir", stateDir,
+		"--db-path", " \t ",
+		"--host-key", " \t ",
+		"--kernel", "/images/vmlinux.bin",
+		"--rootfs", "/images/rootfs.ext4",
+	}, flag.ContinueOnError)
+	if err != nil {
+		t.Fatalf("loadFromArgs: %v", err)
+	}
+
+	assertConfigValue(t, "DBPath", cfg.DBPath, filepath.Join(stateDir, "db.sqlite"))
+	assertConfigValue(t, "HostKeyPath", cfg.HostKeyPath, filepath.Join(stateDir, "ssh_host_ed25519"))
+}
+
 func TestLoadFromArgsValidation(t *testing.T) {
 	tests := []struct {
 		name    string

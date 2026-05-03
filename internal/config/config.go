@@ -79,10 +79,10 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if isBlank(cfg.StateDir) {
 		return nil, errors.New("--state-dir must be set")
 	}
-	if cfg.DBPath == "" {
+	if isBlank(cfg.DBPath) {
 		cfg.DBPath = filepath.Join(cfg.StateDir, "db.sqlite")
 	}
-	if cfg.HostKeyPath == "" {
+	if isBlank(cfg.HostKeyPath) {
 		cfg.HostKeyPath = filepath.Join(cfg.StateDir, "ssh_host_ed25519")
 	}
 	if err := validateListenAddr(cfg.ListenAddr); err != nil {
