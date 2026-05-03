@@ -50,6 +50,9 @@ func (m *Manager) Start(ctx context.Context) (*VM, error) {
 	if ctx == nil {
 		return nil, errors.New("context must be set")
 	}
+	if err := validateStartConfig(m.cfg); err != nil {
+		return nil, err
+	}
 	id, err := util.RandomHex(6)
 	if err != nil {
 		return nil, err
@@ -138,6 +141,46 @@ func (m *Manager) Start(ctx context.Context) (*VM, error) {
 	}
 
 	return vm, nil
+}
+
+func validateStartConfig(cfg *config.Config) error {
+	if strings.TrimSpace(cfg.StateDir) == "" {
+		return errors.New("state dir must be set")
+	}
+	if strings.TrimSpace(cfg.Firecracker) == "" {
+		return errors.New("firecracker binary must be set")
+	}
+	if strings.TrimSpace(cfg.KernelImage) == "" {
+		return errors.New("kernel image must be set")
+	}
+	if strings.TrimSpace(cfg.RootFS) == "" {
+		return errors.New("rootfs must be set")
+	}
+	if cfg.VCPUCount <= 0 {
+		return errors.New("vcpu count must be > 0")
+	}
+	if cfg.MemMiB <= 0 {
+		return errors.New("memory must be > 0")
+	}
+	if strings.TrimSpace(cfg.GuestIP) == "" {
+		return errors.New("guest IP must be set")
+	}
+	if strings.TrimSpace(cfg.HostIP) == "" {
+		return errors.New("host IP must be set")
+	}
+	if !isIPv4(cfg.GuestIP) {
+		return fmt.Errorf("guest IP must be a valid IPv4 address: %s", cfg.GuestIP)
+	}
+	if !isIPv4(cfg.HostIP) {
+		return fmt.Errorf("host IP must be a valid IPv4 address: %s", cfg.HostIP)
+	}
+	if cfg.GuestIP == cfg.HostIP {
+		return errors.New("guest IP and host IP must be different")
+	}
+	if !sameIPv4Slash24(cfg.GuestIP, cfg.HostIP) {
+		return errors.New("guest IP and host IP must be in the same /24 network")
+	}
+	return nil
 }
 
 func (v *VM) Stop(ctx context.Context, graceful time.Duration) error {
@@ -320,6 +363,15 @@ func isIPv4(value string) bool {
 	ip := net.ParseIP(value)
 	ipv4 := ip.To4()
 	return ipv4 != nil && value == ipv4.String()
+}
+
+func sameIPv4Slash24(a, b string) bool {
+	ipA := net.ParseIP(a).To4()
+	ipB := net.ParseIP(b).To4()
+	if ipA == nil || ipB == nil {
+		return false
+	}
+	return ipA[0] == ipB[0] && ipA[1] == ipB[1] && ipA[2] == ipB[2]
 }
 
 func waitForSocket(path string, timeout time.Duration) error {

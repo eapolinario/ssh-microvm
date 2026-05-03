@@ -175,6 +175,126 @@ func TestManagerStartRejectsNilDependencies(t *testing.T) {
 	}
 }
 
+func TestManagerStartRejectsInvalidConfigBeforeSideEffects(t *testing.T) {
+	tests := []struct {
+		name    string
+		mutate  func(*config.Config)
+		wantErr string
+	}{
+		{
+			name: "blank state dir",
+			mutate: func(cfg *config.Config) {
+				cfg.StateDir = " \t "
+			},
+			wantErr: "state dir must be set",
+		},
+		{
+			name: "blank firecracker binary",
+			mutate: func(cfg *config.Config) {
+				cfg.Firecracker = " \t "
+			},
+			wantErr: "firecracker binary must be set",
+		},
+		{
+			name: "blank kernel image",
+			mutate: func(cfg *config.Config) {
+				cfg.KernelImage = " \t "
+			},
+			wantErr: "kernel image must be set",
+		},
+		{
+			name: "blank rootfs",
+			mutate: func(cfg *config.Config) {
+				cfg.RootFS = " \t "
+			},
+			wantErr: "rootfs must be set",
+		},
+		{
+			name: "non-positive vcpus",
+			mutate: func(cfg *config.Config) {
+				cfg.VCPUCount = 0
+			},
+			wantErr: "vcpu count must be > 0",
+		},
+		{
+			name: "non-positive memory",
+			mutate: func(cfg *config.Config) {
+				cfg.MemMiB = 0
+			},
+			wantErr: "memory must be > 0",
+		},
+		{
+			name: "blank guest ip",
+			mutate: func(cfg *config.Config) {
+				cfg.GuestIP = " \t "
+			},
+			wantErr: "guest IP must be set",
+		},
+		{
+			name: "blank host ip",
+			mutate: func(cfg *config.Config) {
+				cfg.HostIP = " \t "
+			},
+			wantErr: "host IP must be set",
+		},
+		{
+			name: "invalid guest ip",
+			mutate: func(cfg *config.Config) {
+				cfg.GuestIP = "not-an-ip"
+			},
+			wantErr: "guest IP must be a valid IPv4 address",
+		},
+		{
+			name: "invalid host ip",
+			mutate: func(cfg *config.Config) {
+				cfg.HostIP = "not-an-ip"
+			},
+			wantErr: "host IP must be a valid IPv4 address",
+		},
+		{
+			name: "same guest and host ip",
+			mutate: func(cfg *config.Config) {
+				cfg.GuestIP = "172.16.0.2"
+				cfg.HostIP = "172.16.0.2"
+			},
+			wantErr: "guest IP and host IP must be different",
+		},
+		{
+			name: "guest and host ip on different slash24 networks",
+			mutate: func(cfg *config.Config) {
+				cfg.GuestIP = "172.16.1.2"
+				cfg.HostIP = "172.16.0.1"
+			},
+			wantErr: "guest IP and host IP must be in the same /24 network",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			workDir := t.TempDir()
+			t.Chdir(workDir)
+			stateDir := filepath.Join(workDir, "state")
+			cfg := validStartConfig(stateDir)
+			tt.mutate(cfg)
+
+			vm, err := NewManager(cfg).Start(context.Background())
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Start error = %v, want containing %q", err, tt.wantErr)
+			}
+			if vm != nil {
+				t.Fatalf("Start returned VM %v, want nil", vm)
+			}
+			entries, readErr := os.ReadDir(workDir)
+			if readErr != nil {
+				t.Fatalf("read work dir: %v", readErr)
+			}
+			if len(entries) != 0 {
+				t.Fatalf("Start created filesystem entries before validating config: %v", entries)
+			}
+		})
+	}
+}
+
 func TestBuildBootArgsAddsGuestIPConfiguration(t *testing.T) {
 	cfg := &config.Config{
 		BootArgs: "console=ttyS0 reboot=k panic=1 pci=off",
@@ -564,4 +684,18 @@ func newUnixHTTPServer(t *testing.T, socketPath string, handler http.Handler) *h
 		_ = server.Close()
 	})
 	return server
+}
+
+func validStartConfig(stateDir string) *config.Config {
+	return &config.Config{
+		StateDir:    stateDir,
+		Firecracker: "firecracker",
+		KernelImage: "/kernel",
+		RootFS:      "/rootfs",
+		VCPUCount:   1,
+		MemMiB:      512,
+		GuestIP:     "172.16.0.2",
+		HostIP:      "172.16.0.1",
+		TapPrefix:   "tap",
+	}
 }
