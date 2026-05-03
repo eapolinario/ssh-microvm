@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -142,6 +144,9 @@ func (s *Store) EnsureUserAndKey(ctx context.Context, username, fingerprint, pub
 	}
 	if hasSurroundingWhitespace(publicKey) {
 		return "", errors.New("public key must not contain surrounding whitespace")
+	}
+	if err := validateAuthorizedKey(publicKey); err != nil {
+		return "", err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -396,6 +401,17 @@ func validateTCPAddr(label, value string) error {
 	}
 	if _, err := net.ResolveTCPAddr("tcp", value); err != nil {
 		return fmt.Errorf("%s must resolve to a valid TCP address", label)
+	}
+	return nil
+}
+
+func validateAuthorizedKey(value string) error {
+	_, _, _, rest, err := ssh.ParseAuthorizedKey([]byte(value))
+	if err != nil {
+		return errors.New("public key must be a valid authorized key")
+	}
+	if len(rest) != 0 {
+		return errors.New("public key must contain exactly one authorized key")
 	}
 	return nil
 }

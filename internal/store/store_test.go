@@ -9,6 +9,8 @@ import (
 	"testing"
 )
 
+const testAuthorizedKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPh2vDLbN/0Bu93v5NvdlRQ7WOpknAUgJ0l1ofhOYTpf"
+
 func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -140,7 +142,7 @@ func TestStoreAPIsRejectNilStore(t *testing.T) {
 		{
 			name: "EnsureUserAndKey",
 			run: func(st *Store) error {
-				_, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+				_, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 				return err
 			},
 		},
@@ -238,7 +240,7 @@ func TestStoreAPIsRejectNilContext(t *testing.T) {
 		{
 			name: "EnsureUserAndKey",
 			run: func() error {
-				_, err := st.EnsureUserAndKey(nil, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+				_, err := st.EnsureUserAndKey(nil, "alice", "SHA256:test", testAuthorizedKey)
 				return err
 			},
 		},
@@ -293,7 +295,7 @@ func TestStoreUserSessionAndVMLifecycle(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -301,7 +303,7 @@ func TestStoreUserSessionAndVMLifecycle(t *testing.T) {
 		t.Fatalf("EnsureUserAndKey returned empty user ID")
 	}
 
-	userIDAgain, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userIDAgain, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("second EnsureUserAndKey: %v", err)
 	}
@@ -414,7 +416,7 @@ func TestCreateSessionRejectsBlankFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -493,7 +495,7 @@ func TestCreateSessionRejectsWhitespacePaddedFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -574,7 +576,7 @@ func TestCreateSessionRejectsInvalidStartTime(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -609,7 +611,7 @@ func TestCreateSessionRejectsInvalidRemoteAddr(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -673,7 +675,7 @@ func TestCreateSessionRejectsUnsupportedStatus(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -718,13 +720,13 @@ func TestEnsureUserAndKeyRejectsBlankInputs(t *testing.T) {
 			name:        "blank username",
 			username:    " \t ",
 			fingerprint: "SHA256:test",
-			publicKey:   "ssh-ed25519 AAAA alice",
+			publicKey:   testAuthorizedKey,
 		},
 		{
 			name:        "blank fingerprint",
 			username:    "alice",
 			fingerprint: " \t ",
-			publicKey:   "ssh-ed25519 AAAA alice",
+			publicKey:   testAuthorizedKey,
 		},
 		{
 			name:        "blank public key",
@@ -780,7 +782,7 @@ func TestEnsureUserAndKeyRejectsWhitespacePaddedMetadata(t *testing.T) {
 			name:        "padded public key",
 			username:    "alice",
 			fingerprint: "SHA256:test",
-			publicKey:   " ssh-ed25519 AAAA alice\n",
+			publicKey:   " " + testAuthorizedKey + "\n",
 		},
 	}
 
@@ -788,7 +790,7 @@ func TestEnsureUserAndKeyRejectsWhitespacePaddedMetadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			publicKey := tt.publicKey
 			if publicKey == "" {
-				publicKey = "ssh-ed25519 AAAA alice"
+				publicKey = testAuthorizedKey
 			}
 			if _, err := st.EnsureUserAndKey(ctx, tt.username, tt.fingerprint, publicKey); err == nil {
 				t.Fatalf("EnsureUserAndKey accepted %s", tt.name)
@@ -810,6 +812,32 @@ func TestEnsureUserAndKeyRejectsWhitespacePaddedMetadata(t *testing.T) {
 	}
 }
 
+func TestEnsureUserAndKeyRejectsInvalidPublicKey(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	_, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err == nil {
+		t.Fatalf("EnsureUserAndKey accepted an invalid public key")
+	}
+	if !strings.Contains(err.Error(), "public key must be a valid authorized key") {
+		t.Fatalf("EnsureUserAndKey error = %q, want public key validation error", err)
+	}
+
+	var userCount, keyCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users")
+	if err := row.Scan(&userCount); err != nil {
+		t.Fatalf("query users: %v", err)
+	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM keys")
+	if err := row.Scan(&keyCount); err != nil {
+		t.Fatalf("query keys: %v", err)
+	}
+	if userCount != 0 || keyCount != 0 {
+		t.Fatalf("invalid public key inserted users=%d keys=%d, want 0/0", userCount, keyCount)
+	}
+}
+
 func TestHasKeyRejectsBlankFingerprint(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -827,7 +855,7 @@ func TestHasKeyRejectsWhitespacePaddedFingerprint(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	if _, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice"); err != nil {
+	if _, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey); err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
 
@@ -859,7 +887,7 @@ func TestLifecycleUpdatesRejectBlankInputs(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -963,7 +991,7 @@ func TestLifecycleUpdatesRejectWhitespacePaddedInputs(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1067,7 +1095,7 @@ func TestEndVMRejectsNegativeExitStatus(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1121,7 +1149,7 @@ func TestEndVMRejectsAlreadyEndedVM(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1175,7 +1203,7 @@ func TestEndSessionRejectsUnsupportedTerminalStatus(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1219,7 +1247,7 @@ func TestEndSessionRejectsAlreadyEndedSession(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1263,7 +1291,7 @@ func TestAttachVMRequiresExistingVM(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1297,7 +1325,7 @@ func TestAttachVMRequiresVMForSameSession(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1355,7 +1383,7 @@ func TestAttachVMRejectsAlreadyAttachedSession(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1415,7 +1443,7 @@ func TestAttachVMRejectsEndedSession(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1473,7 +1501,7 @@ func TestCreateVMRejectsEndedSession(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1518,7 +1546,7 @@ func TestCreateVMRejectsBlankFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1595,7 +1623,7 @@ func TestCreateVMRejectsWhitespacePaddedFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1674,7 +1702,7 @@ func TestCreateVMRejectsInvalidStartTime(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
@@ -1719,7 +1747,7 @@ func TestCreateVMRejectsNonPositiveFirecrackerPID(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 
-	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", testAuthorizedKey)
 	if err != nil {
 		t.Fatalf("EnsureUserAndKey: %v", err)
 	}
