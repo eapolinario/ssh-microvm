@@ -235,4 +235,57 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 10,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_terminal_update_requires_no_active_vms
+BEFORE UPDATE OF id, status, ended_at ON sessions
+WHEN NEW.status IN ('closed', 'vm_failed')
+AND EXISTS (
+	SELECT 1 FROM vms
+	WHERE session_id = NEW.id
+	AND ended_at IS NULL
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session cannot end while VM is active');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_insert_requires_active_session
+BEFORE INSERT ON vms
+WHEN NOT EXISTS (
+	SELECT 1 FROM sessions
+	WHERE id = NEW.session_id
+	AND status = 'active'
+	AND ended_at IS NULL
+)
+BEGIN
+	SELECT RAISE(ABORT, 'VM session must be active');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_session_update_requires_active_session
+BEFORE UPDATE OF session_id ON vms
+WHEN NOT EXISTS (
+	SELECT 1 FROM sessions
+	WHERE id = NEW.session_id
+	AND status = 'active'
+	AND ended_at IS NULL
+)
+BEGIN
+	SELECT RAISE(ABORT, 'VM session must be active');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_active_update_requires_active_session
+BEFORE UPDATE OF ended_at ON vms
+WHEN NEW.ended_at IS NULL
+AND NOT EXISTS (
+	SELECT 1 FROM sessions
+	WHERE id = NEW.session_id
+	AND status = 'active'
+	AND ended_at IS NULL
+)
+BEGIN
+	SELECT RAISE(ABORT, 'active VM session must be active');
+END;
+`,
+	},
 }

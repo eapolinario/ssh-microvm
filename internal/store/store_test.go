@@ -88,6 +88,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 9 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 10")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 10: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 10 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -261,6 +268,81 @@ VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2
 	}
 	if gotStatus != "closed" {
 		t.Fatalf("session status = %q, want closed", gotStatus)
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionVMCompletionOrdering(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2222", now(), "active"); err != nil {
+		t.Fatalf("insert valid active session: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-1", "session-1", filepath.Join(t.TempDir(), "vm-1"), 1234, now()); err != nil {
+		t.Fatalf("insert valid active VM: %v", err)
+	}
+
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?", now(), "closed", "session-1"); err == nil {
+		t.Fatalf("ended session with active VM, want trigger error")
+	}
+
+	vmEndedAt := now()
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET ended_at = ?, exit_status = ? WHERE id = ?", vmEndedAt, 0, "vm-1"); err != nil {
+		t.Fatalf("complete VM consistently: %v", err)
+	}
+	sessionEndedAt := now()
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?", sessionEndedAt, "closed", "session-1"); err != nil {
+		t.Fatalf("complete session after VM ended: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET ended_at = NULL, exit_status = NULL WHERE id = ?", "vm-1"); err == nil {
+		t.Fatalf("reopened VM for terminal session, want trigger error")
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, ended_at, status)
+VALUES(?, ?, ?, ?, ?, ?, ?)`, "session-2", userID, testKeyFingerprint, "127.0.0.1:2223", now(), now(), "vm_failed"); err != nil {
+		t.Fatalf("insert valid terminal session: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-2", "session-2", filepath.Join(t.TempDir(), "vm-2"), 1235, now()); err == nil {
+		t.Fatalf("inserted VM for terminal session, want trigger error")
+	}
+
+	var (
+		gotSessionStatus string
+		gotSessionEnd    sql.NullString
+		gotVMEnd         sql.NullString
+		gotExitStatus    sql.NullInt64
+		vmCount          int
+	)
+	row := st.db.QueryRowContext(ctx, "SELECT status, ended_at FROM sessions WHERE id = ?", "session-1")
+	if err := row.Scan(&gotSessionStatus, &gotSessionEnd); err != nil {
+		t.Fatalf("query session-1: %v", err)
+	}
+	if gotSessionStatus != "closed" || !gotSessionEnd.Valid || gotSessionEnd.String != sessionEndedAt {
+		t.Fatalf("session-1 completion = (%q, %v), want (closed, %q)", gotSessionStatus, gotSessionEnd, sessionEndedAt)
+	}
+	row = st.db.QueryRowContext(ctx, "SELECT ended_at, exit_status FROM vms WHERE id = ?", "vm-1")
+	if err := row.Scan(&gotVMEnd, &gotExitStatus); err != nil {
+		t.Fatalf("query vm-1: %v", err)
+	}
+	if !gotVMEnd.Valid || gotVMEnd.String != vmEndedAt {
+		t.Fatalf("vm-1 ended_at = %v, want %q", gotVMEnd, vmEndedAt)
+	}
+	if !gotExitStatus.Valid || gotExitStatus.Int64 != 0 {
+		t.Fatalf("vm-1 exit_status = %v, want 0", gotExitStatus)
+	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM vms WHERE session_id = ?", "session-2")
+	if err := row.Scan(&vmCount); err != nil {
+		t.Fatalf("query session-2 VMs: %v", err)
+	}
+	if vmCount != 0 {
+		t.Fatalf("terminal session VM count = %d, want 0", vmCount)
 	}
 }
 
