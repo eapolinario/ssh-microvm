@@ -263,6 +263,9 @@ func TestPutJSONOverUnixSocket(t *testing.T) {
 		if r.URL.Path != "/machine-config" {
 			t.Errorf("path = %s, want /machine-config", r.URL.Path)
 		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Errorf("Content-Type = %q, want application/json", got)
+		}
 		var payload map[string]any
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			t.Errorf("decode request body: %v", err)

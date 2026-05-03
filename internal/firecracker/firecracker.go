@@ -335,6 +335,7 @@ func putJSON(client *http.Client, path string, payload any) error {
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
