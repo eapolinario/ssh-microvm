@@ -109,6 +109,43 @@ func TestLoadFromArgsDerivesBlankOptionalPaths(t *testing.T) {
 	assertConfigValue(t, "HostKeyPath", cfg.HostKeyPath, filepath.Join(stateDir, "ssh_host_ed25519"))
 }
 
+func TestLoadFromArgsTrimsStringOverrides(t *testing.T) {
+	stateDir := t.TempDir()
+
+	cfg, err := loadFromArgs([]string{
+		"--listen", " 127.0.0.1:2200 ",
+		"--state-dir", " " + stateDir + " ",
+		"--db-path", " " + filepath.Join(stateDir, "custom.sqlite") + " ",
+		"--host-key", " " + filepath.Join(stateDir, "host_key") + " ",
+		"--auth-mode", " " + AuthModeKnownKeys + " ",
+		"--firecracker", " /bin/firecracker ",
+		"--kernel", " /images/kernel ",
+		"--rootfs", " /images/rootfs ",
+		"--guest-user", " ubuntu ",
+		"--guest-key", " /keys/guest ",
+		"--guest-ip", " 10.0.0.2 ",
+		"--host-ip", " 10.0.0.1 ",
+		"--tap-prefix", " vm ",
+	}, flag.ContinueOnError)
+	if err != nil {
+		t.Fatalf("loadFromArgs: %v", err)
+	}
+
+	assertConfigValue(t, "ListenAddr", cfg.ListenAddr, "127.0.0.1:2200")
+	assertConfigValue(t, "StateDir", cfg.StateDir, stateDir)
+	assertConfigValue(t, "DBPath", cfg.DBPath, filepath.Join(stateDir, "custom.sqlite"))
+	assertConfigValue(t, "HostKeyPath", cfg.HostKeyPath, filepath.Join(stateDir, "host_key"))
+	assertConfigValue(t, "AuthMode", cfg.AuthMode, AuthModeKnownKeys)
+	assertConfigValue(t, "Firecracker", cfg.Firecracker, "/bin/firecracker")
+	assertConfigValue(t, "KernelImage", cfg.KernelImage, "/images/kernel")
+	assertConfigValue(t, "RootFS", cfg.RootFS, "/images/rootfs")
+	assertConfigValue(t, "GuestUser", cfg.GuestUser, "ubuntu")
+	assertConfigValue(t, "GuestKeyPath", cfg.GuestKeyPath, "/keys/guest")
+	assertConfigValue(t, "GuestIP", cfg.GuestIP, "10.0.0.2")
+	assertConfigValue(t, "HostIP", cfg.HostIP, "10.0.0.1")
+	assertConfigValue(t, "TapPrefix", cfg.TapPrefix, "vm")
+}
+
 func TestLoadFromArgsValidation(t *testing.T) {
 	tests := []struct {
 		name    string

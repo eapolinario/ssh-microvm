@@ -75,6 +75,7 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
+	normalizeStringFields(cfg)
 
 	if isBlank(cfg.StateDir) {
 		return nil, errors.New("--state-dir must be set")
@@ -133,6 +134,22 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 
 func isBlank(value string) bool {
 	return strings.TrimSpace(value) == ""
+}
+
+func normalizeStringFields(cfg *Config) {
+	cfg.ListenAddr = strings.TrimSpace(cfg.ListenAddr)
+	cfg.StateDir = strings.TrimSpace(cfg.StateDir)
+	cfg.DBPath = strings.TrimSpace(cfg.DBPath)
+	cfg.HostKeyPath = strings.TrimSpace(cfg.HostKeyPath)
+	cfg.AuthMode = strings.TrimSpace(cfg.AuthMode)
+	cfg.Firecracker = strings.TrimSpace(cfg.Firecracker)
+	cfg.KernelImage = strings.TrimSpace(cfg.KernelImage)
+	cfg.RootFS = strings.TrimSpace(cfg.RootFS)
+	cfg.GuestUser = strings.TrimSpace(cfg.GuestUser)
+	cfg.GuestKeyPath = strings.TrimSpace(cfg.GuestKeyPath)
+	cfg.GuestIP = strings.TrimSpace(cfg.GuestIP)
+	cfg.HostIP = strings.TrimSpace(cfg.HostIP)
+	cfg.TapPrefix = strings.TrimSpace(cfg.TapPrefix)
 }
 
 func isIPv4(value string) bool {
