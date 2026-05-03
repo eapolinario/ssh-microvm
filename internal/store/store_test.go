@@ -36,6 +36,24 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestStoreUsesSingleConnectionForConnectionScopedPragmas(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if maxOpen := st.db.Stats().MaxOpenConnections; maxOpen != 1 {
+		t.Fatalf("MaxOpenConnections = %d, want 1", maxOpen)
+	}
+
+	var foreignKeys int
+	row := st.db.QueryRowContext(ctx, "PRAGMA foreign_keys")
+	if err := row.Scan(&foreignKeys); err != nil {
+		t.Fatalf("query foreign_keys pragma: %v", err)
+	}
+	if foreignKeys != 1 {
+		t.Fatalf("PRAGMA foreign_keys = %d, want 1", foreignKeys)
+	}
+}
+
 func TestStoreUserSessionAndVMLifecycle(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()

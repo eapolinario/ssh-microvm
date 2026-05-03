@@ -18,10 +18,14 @@ func New(path string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
 	if _, err := db.Exec("PRAGMA foreign_keys = ON;"); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("enable foreign_keys: %w", err)
 	}
 	if _, err := db.Exec("PRAGMA journal_mode = WAL;"); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("enable WAL: %w", err)
 	}
 	return &Store{db: db}, nil
