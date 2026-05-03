@@ -146,6 +146,11 @@ func TestLoadFromArgsValidation(t *testing.T) {
 			wantErr: "--listen port must be valid: not-a-port",
 		},
 		{
+			name:    "invalid listen host",
+			args:    requiredArgs("--listen", "999.0.0.1:2222"),
+			wantErr: "--listen must resolve to a valid TCP address: 999.0.0.1:2222",
+		},
+		{
 			name:    "missing state dir",
 			args:    requiredArgs("--state-dir", ""),
 			wantErr: "--state-dir must be set",

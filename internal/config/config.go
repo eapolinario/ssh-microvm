@@ -151,5 +151,8 @@ func validateListenAddr(value string) error {
 	if _, err := net.LookupPort("tcp", port); err != nil {
 		return fmt.Errorf("--listen port must be valid: %s", port)
 	}
+	if _, err := net.ResolveTCPAddr("tcp", value); err != nil {
+		return fmt.Errorf("--listen must resolve to a valid TCP address: %s", value)
+	}
 	return nil
 }
