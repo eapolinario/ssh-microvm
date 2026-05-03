@@ -165,6 +165,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 20 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 21")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 21: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 21 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -427,6 +434,64 @@ VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 
 	}
 	if !gotEndedAt.Valid || gotEndedAt.String != validOffsetTime {
 		t.Fatalf("VM ended_at = %v, want %q", gotEndedAt, validOffsetTime)
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionEndTimeValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name      string
+		sessionID string
+		endedAt   string
+	}{
+		{name: "blank end time", sessionID: "bad-blank-end-time", endedAt: " \t "},
+		{name: "padded end time", sessionID: "bad-padded-end-time", endedAt: " " + now() + " "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, ended_at, status)
+VALUES(?, ?, ?, ?, ?, ?, ?)`, tt.sessionID, userID, testKeyFingerprint, "127.0.0.1:2222", now(), tt.endedAt, "closed"); err == nil {
+				t.Fatalf("inserted session with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "session-1", userID, testKeyFingerprint, "127.0.0.1:2222", now(), "active"); err != nil {
+		t.Fatalf("insert valid active session: %v", err)
+	}
+	for _, tt := range []struct {
+		name    string
+		endedAt string
+	}{
+		{name: "blank end time", endedAt: "\n\t"},
+		{name: "padded end time", endedAt: "\t" + now() + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?", tt.endedAt, "closed", "session-1"); err == nil {
+				t.Fatalf("updated session to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	endedAt := now()
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?", endedAt, "closed", "session-1"); err != nil {
+		t.Fatalf("complete session with valid end time: %v", err)
+	}
+
+	var gotEndedAt sql.NullString
+	row := st.db.QueryRowContext(ctx, "SELECT ended_at FROM sessions WHERE id = ?", "session-1")
+	if err := row.Scan(&gotEndedAt); err != nil {
+		t.Fatalf("query session ended_at: %v", err)
+	}
+	if !gotEndedAt.Valid || gotEndedAt.String != endedAt {
+		t.Fatalf("session ended_at = %v, want %q", gotEndedAt, endedAt)
 	}
 }
 
