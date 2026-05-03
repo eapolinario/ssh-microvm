@@ -1550,6 +1550,76 @@ func TestEndSessionRejectsVMFailedStatusWithActiveAttachedVM(t *testing.T) {
 	}
 }
 
+func TestEndSessionRejectsActiveUnattachedVM(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: testKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	vm := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	if err := st.CreateVM(ctx, vm); err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+
+	err = st.EndSession(ctx, session.ID, "closed")
+	if err != sql.ErrNoRows {
+		t.Fatalf("EndSession with active unattached VM error = %v, want sql.ErrNoRows", err)
+	}
+
+	var (
+		status     string
+		endedAt    sql.NullString
+		attachedVM sql.NullString
+		vmEnd      sql.NullString
+	)
+	row := st.db.QueryRowContext(ctx, `
+SELECT s.status, s.ended_at, s.vm_id, v.ended_at
+FROM sessions s
+JOIN vms v ON v.session_id = s.id
+WHERE s.id = ?`, session.ID)
+	if err := row.Scan(&status, &endedAt, &attachedVM, &vmEnd); err != nil {
+		t.Fatalf("query lifecycle state: %v", err)
+	}
+	if status != "active" {
+		t.Fatalf("session status = %q, want active", status)
+	}
+	if endedAt.Valid {
+		t.Fatalf("EndSession set ended_at while unattached VM was active: %q", endedAt.String)
+	}
+	if attachedVM.Valid {
+		t.Fatalf("session vm_id = %q, want NULL", attachedVM.String)
+	}
+	if vmEnd.Valid {
+		t.Fatalf("VM ended_at = %q, want NULL", vmEnd.String)
+	}
+
+	if err := st.EndVM(ctx, vm.ID, 0); err != nil {
+		t.Fatalf("EndVM: %v", err)
+	}
+	if err := st.EndSession(ctx, session.ID, "closed"); err != nil {
+		t.Fatalf("EndSession after VM ended: %v", err)
+	}
+}
+
 func TestAttachVMRequiresExistingVM(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
@@ -1794,6 +1864,9 @@ func TestAttachVMRejectsEndedSession(t *testing.T) {
 	}
 	if err := st.CreateVM(ctx, vm); err != nil {
 		t.Fatalf("CreateVM: %v", err)
+	}
+	if err := st.EndVM(ctx, vm.ID, 0); err != nil {
+		t.Fatalf("EndVM: %v", err)
 	}
 	if err := st.EndSession(ctx, session.ID, "closed"); err != nil {
 		t.Fatalf("EndSession: %v", err)
