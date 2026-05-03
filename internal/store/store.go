@@ -404,9 +404,12 @@ func validateTimestamp(label, value string) error {
 }
 
 func validateTCPAddr(label, value string) error {
-	_, port, err := net.SplitHostPort(value)
+	host, port, err := net.SplitHostPort(value)
 	if err != nil {
 		return fmt.Errorf("%s must be a valid TCP address", label)
+	}
+	if host == "" {
+		return fmt.Errorf("%s host must be set", label)
 	}
 	if port == "" {
 		return fmt.Errorf("%s port must be set", label)
