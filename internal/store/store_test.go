@@ -74,6 +74,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 7 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 8")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 8: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 8 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -126,6 +133,70 @@ VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 
 	}
 	if exitStatus.Valid {
 		t.Fatalf("VM exit_status = %d, want NULL", exitStatus.Int64)
+	}
+}
+
+func TestEnsureSchemaEnforcesVMCompletionConsistency(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: testKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at, ended_at)
+VALUES(?, ?, ?, ?, ?, ?)`, "ended-without-exit-vm", session.ID, filepath.Join(t.TempDir(), "ended-without-exit-vm"), 1234, now(), now()); err == nil {
+		t.Fatalf("inserted ended VM without exit status, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at, exit_status)
+VALUES(?, ?, ?, ?, ?, ?)`, "exit-without-ended-vm", session.ID, filepath.Join(t.TempDir(), "exit-without-ended-vm"), 1234, now(), 0); err == nil {
+		t.Fatalf("inserted active VM with exit status, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 1234, now()); err != nil {
+		t.Fatalf("insert valid active VM: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET ended_at = ? WHERE id = ?", now(), "vm-1"); err == nil {
+		t.Fatalf("updated VM ended_at without exit status, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET exit_status = ? WHERE id = ?", 0, "vm-1"); err == nil {
+		t.Fatalf("updated VM exit_status without ended_at, want trigger error")
+	}
+
+	endedAt := now()
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET ended_at = ?, exit_status = ? WHERE id = ?", endedAt, 0, "vm-1"); err != nil {
+		t.Fatalf("complete VM consistently: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET ended_at = NULL WHERE id = ?", "vm-1"); err == nil {
+		t.Fatalf("cleared ended_at without exit status, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE vms SET exit_status = NULL WHERE id = ?", "vm-1"); err == nil {
+		t.Fatalf("cleared exit_status without ended_at, want trigger error")
+	}
+
+	var gotEndedAt sql.NullString
+	var gotExitStatus sql.NullInt64
+	row := st.db.QueryRowContext(ctx, "SELECT ended_at, exit_status FROM vms WHERE id = ?", "vm-1")
+	if err := row.Scan(&gotEndedAt, &gotExitStatus); err != nil {
+		t.Fatalf("query VM completion: %v", err)
+	}
+	if !gotEndedAt.Valid || gotEndedAt.String != endedAt {
+		t.Fatalf("VM ended_at = %v, want %q", gotEndedAt, endedAt)
+	}
+	if !gotExitStatus.Valid || gotExitStatus.Int64 != 0 {
+		t.Fatalf("VM exit_status = %v, want 0", gotExitStatus)
 	}
 }
 

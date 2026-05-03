@@ -195,4 +195,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 8,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_vms_completion_insert_consistent
+BEFORE INSERT ON vms
+WHEN (NEW.ended_at IS NULL AND NEW.exit_status IS NOT NULL)
+OR (NEW.ended_at IS NOT NULL AND NEW.exit_status IS NULL)
+BEGIN
+	SELECT RAISE(ABORT, 'VM ended_at and exit_status must be set together');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_completion_update_consistent
+BEFORE UPDATE OF ended_at, exit_status ON vms
+WHEN (NEW.ended_at IS NULL AND NEW.exit_status IS NOT NULL)
+OR (NEW.ended_at IS NOT NULL AND NEW.exit_status IS NULL)
+BEGIN
+	SELECT RAISE(ABORT, 'VM ended_at and exit_status must be set together');
+END;
+`,
+	},
 }
