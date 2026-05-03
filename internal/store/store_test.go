@@ -488,6 +488,87 @@ func TestCreateSessionRejectsBlankFields(t *testing.T) {
 	}
 }
 
+func TestCreateSessionRejectsWhitespacePaddedFields(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+
+	valid := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	tests := []struct {
+		name   string
+		mutate func(*Session)
+	}{
+		{
+			name: "padded ID",
+			mutate: func(session *Session) {
+				session.ID = " " + session.ID + " "
+			},
+		},
+		{
+			name: "padded user ID",
+			mutate: func(session *Session) {
+				session.UserID = " " + session.UserID + " "
+			},
+		},
+		{
+			name: "padded key fingerprint",
+			mutate: func(session *Session) {
+				session.KeyFingerprint = " " + session.KeyFingerprint + " "
+			},
+		},
+		{
+			name: "padded remote address",
+			mutate: func(session *Session) {
+				session.RemoteAddr = " " + session.RemoteAddr + " "
+			},
+		},
+		{
+			name: "padded start time",
+			mutate: func(session *Session) {
+				session.StartedAt = " " + session.StartedAt + " "
+			},
+		},
+		{
+			name: "padded status",
+			mutate: func(session *Session) {
+				session.Status = " " + session.Status + " "
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			session := valid
+			tt.mutate(&session)
+			if err := st.CreateSession(ctx, session); err == nil {
+				t.Fatalf("CreateSession accepted %s", tt.name)
+			} else if err == sql.ErrNoRows {
+				t.Fatalf("CreateSession returned sql.ErrNoRows for %s, want validation error", tt.name)
+			}
+		})
+	}
+
+	var sessionCount int
+	row := st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions")
+	if err := row.Scan(&sessionCount); err != nil {
+		t.Fatalf("query sessions: %v", err)
+	}
+	if sessionCount != 0 {
+		t.Fatalf("padded CreateSession inserted sessions=%d, want 0", sessionCount)
+	}
+}
+
 func TestEnsureUserAndKeyRejectsBlankInputs(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()

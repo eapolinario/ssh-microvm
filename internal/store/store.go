@@ -193,20 +193,38 @@ func (s *Store) CreateSession(ctx context.Context, session Session) error {
 	if isBlank(session.ID) {
 		return errors.New("session ID must be set")
 	}
+	if hasSurroundingWhitespace(session.ID) {
+		return errors.New("session ID must not contain surrounding whitespace")
+	}
 	if isBlank(session.UserID) {
 		return errors.New("session user ID must be set")
+	}
+	if hasSurroundingWhitespace(session.UserID) {
+		return errors.New("session user ID must not contain surrounding whitespace")
 	}
 	if isBlank(session.KeyFingerprint) {
 		return errors.New("session key fingerprint must be set")
 	}
+	if hasSurroundingWhitespace(session.KeyFingerprint) {
+		return errors.New("session key fingerprint must not contain surrounding whitespace")
+	}
 	if isBlank(session.RemoteAddr) {
 		return errors.New("session remote address must be set")
+	}
+	if hasSurroundingWhitespace(session.RemoteAddr) {
+		return errors.New("session remote address must not contain surrounding whitespace")
 	}
 	if isBlank(session.StartedAt) {
 		return errors.New("session start time must be set")
 	}
+	if hasSurroundingWhitespace(session.StartedAt) {
+		return errors.New("session start time must not contain surrounding whitespace")
+	}
 	if isBlank(session.Status) {
 		return errors.New("session status must be set")
+	}
+	if hasSurroundingWhitespace(session.Status) {
+		return errors.New("session status must not contain surrounding whitespace")
 	}
 	_, err := s.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
 VALUES(?, ?, ?, ?, ?, ?)`, session.ID, session.UserID, session.KeyFingerprint, session.RemoteAddr, session.StartedAt, session.Status)
