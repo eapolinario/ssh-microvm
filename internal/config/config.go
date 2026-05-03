@@ -4,6 +4,8 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"os"
 	"path/filepath"
 
 	"ssh-microvm/internal/util"
@@ -35,6 +37,10 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
+	return loadFromArgs(os.Args[1:], flag.ExitOnError)
+}
+
+func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, error) {
 	id, err := util.RandomHex(6)
 	if err != nil {
 		return nil, err
@@ -43,24 +49,30 @@ func Load() (*Config, error) {
 	defaultStateDir := fmt.Sprintf("/tmp/ssh-microvm-%s", id)
 
 	cfg := &Config{}
-	flag.StringVar(&cfg.ListenAddr, "listen", ":2222", "SSH listen address")
-	flag.StringVar(&cfg.StateDir, "state-dir", defaultStateDir, "State directory for sockets, logs, and DB")
-	flag.StringVar(&cfg.DBPath, "db-path", "", "SQLite database path (default: <state-dir>/db.sqlite)")
-	flag.StringVar(&cfg.HostKeyPath, "host-key", "", "SSH host private key path (default: <state-dir>/ssh_host_ed25519)")
-	flag.StringVar(&cfg.AuthMode, "auth-mode", AuthModeAutoEnroll, "Auth mode: auto-enroll or known-keys")
-	flag.StringVar(&cfg.Firecracker, "firecracker", "firecracker", "Firecracker binary path")
-	flag.StringVar(&cfg.KernelImage, "kernel", "", "Kernel image path")
-	flag.StringVar(&cfg.RootFS, "rootfs", "", "Root filesystem image path (ext4)")
-	flag.StringVar(&cfg.BootArgs, "boot-args", "console=ttyS0 reboot=k panic=1 pci=off", "Kernel boot args")
-	flag.IntVar(&cfg.VCPUCount, "vcpu", 1, "VM vCPU count")
-	flag.IntVar(&cfg.MemMiB, "mem", 512, "VM memory in MiB")
-	flag.IntVar(&cfg.GracefulStopS, "grace-stop", 2, "Seconds to wait before force-killing Firecracker")
-	flag.StringVar(&cfg.GuestUser, "guest-user", "root", "Guest SSH user")
-	flag.StringVar(&cfg.GuestKeyPath, "guest-key", "artifacts/ubuntu.id_rsa", "Guest SSH private key path")
-	flag.StringVar(&cfg.GuestIP, "guest-ip", "172.16.0.2", "Guest IP address")
-	flag.StringVar(&cfg.HostIP, "host-ip", "172.16.0.1", "Host IP address for tap device")
-	flag.StringVar(&cfg.TapPrefix, "tap-prefix", "tap", "Tap device name prefix")
-	flag.Parse()
+	fs := flag.NewFlagSet("ssh-microvm", errorHandling)
+	if errorHandling == flag.ContinueOnError {
+		fs.SetOutput(io.Discard)
+	}
+	fs.StringVar(&cfg.ListenAddr, "listen", ":2222", "SSH listen address")
+	fs.StringVar(&cfg.StateDir, "state-dir", defaultStateDir, "State directory for sockets, logs, and DB")
+	fs.StringVar(&cfg.DBPath, "db-path", "", "SQLite database path (default: <state-dir>/db.sqlite)")
+	fs.StringVar(&cfg.HostKeyPath, "host-key", "", "SSH host private key path (default: <state-dir>/ssh_host_ed25519)")
+	fs.StringVar(&cfg.AuthMode, "auth-mode", AuthModeAutoEnroll, "Auth mode: auto-enroll or known-keys")
+	fs.StringVar(&cfg.Firecracker, "firecracker", "firecracker", "Firecracker binary path")
+	fs.StringVar(&cfg.KernelImage, "kernel", "", "Kernel image path")
+	fs.StringVar(&cfg.RootFS, "rootfs", "", "Root filesystem image path (ext4)")
+	fs.StringVar(&cfg.BootArgs, "boot-args", "console=ttyS0 reboot=k panic=1 pci=off", "Kernel boot args")
+	fs.IntVar(&cfg.VCPUCount, "vcpu", 1, "VM vCPU count")
+	fs.IntVar(&cfg.MemMiB, "mem", 512, "VM memory in MiB")
+	fs.IntVar(&cfg.GracefulStopS, "grace-stop", 2, "Seconds to wait before force-killing Firecracker")
+	fs.StringVar(&cfg.GuestUser, "guest-user", "root", "Guest SSH user")
+	fs.StringVar(&cfg.GuestKeyPath, "guest-key", "artifacts/ubuntu.id_rsa", "Guest SSH private key path")
+	fs.StringVar(&cfg.GuestIP, "guest-ip", "172.16.0.2", "Guest IP address")
+	fs.StringVar(&cfg.HostIP, "host-ip", "172.16.0.1", "Host IP address for tap device")
+	fs.StringVar(&cfg.TapPrefix, "tap-prefix", "tap", "Tap device name prefix")
+	if err := fs.Parse(args); err != nil {
+		return nil, err
+	}
 
 	if cfg.DBPath == "" {
 		cfg.DBPath = filepath.Join(cfg.StateDir, "db.sqlite")
