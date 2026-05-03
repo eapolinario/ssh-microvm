@@ -444,11 +444,8 @@ func sameIPv4Slash24(a, b string) bool {
 }
 
 func waitForSocket(path string, timeout time.Duration) error {
-	if strings.TrimSpace(path) == "" {
-		return errors.New("api socket path is empty")
-	}
-	if path != strings.TrimSpace(path) {
-		return errors.New("api socket path must not contain surrounding whitespace")
+	if err := validateAPISocketPath(path); err != nil {
+		return err
 	}
 	if timeout <= 0 {
 		return errors.New("api socket timeout must be positive")
@@ -488,9 +485,22 @@ func waitForSocket(path string, timeout time.Duration) error {
 	return fmt.Errorf("timeout waiting for api socket: %s", path)
 }
 
+func validateAPISocketPath(path string) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("api socket path is empty")
+	}
+	if path != strings.TrimSpace(path) {
+		return errors.New("api socket path must not contain surrounding whitespace")
+	}
+	return nil
+}
+
 func newUnixClient(sock string) *http.Client {
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			if err := validateAPISocketPath(sock); err != nil {
+				return nil, err
+			}
 			return (&net.Dialer{}).DialContext(ctx, "unix", sock)
 		},
 	}

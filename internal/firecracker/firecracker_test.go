@@ -751,6 +751,34 @@ func TestNewUnixClientSetsRequestTimeout(t *testing.T) {
 	}
 }
 
+func TestNewUnixClientRejectsInvalidSocketPathBeforeDial(t *testing.T) {
+	tests := []struct {
+		name    string
+		sock    string
+		wantErr string
+	}{
+		{
+			name:    "blank socket path",
+			sock:    " \t ",
+			wantErr: "api socket path is empty",
+		},
+		{
+			name:    "socket path with surrounding whitespace",
+			sock:    " " + filepath.Join(t.TempDir(), "firecracker.sock") + " ",
+			wantErr: "api socket path must not contain surrounding whitespace",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := putJSON(newUnixClient(tt.sock), "/machine-config", map[string]any{"ok": true})
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("putJSON error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestPutJSONRejectsInvalidState(t *testing.T) {
 	tests := []struct {
 		name    string
