@@ -346,4 +346,32 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 14,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_vms_started_at_insert_rfc3339
+BEFORE INSERT ON vms
+WHEN julianday(NEW.started_at) IS NULL
+OR instr(NEW.started_at, 'T') != 11
+OR (
+	substr(NEW.started_at, -1) != 'Z'
+	AND substr(NEW.started_at, -6, 1) NOT IN ('+', '-')
+)
+BEGIN
+	SELECT RAISE(ABORT, 'VM start time must be a valid RFC3339 timestamp');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_started_at_update_rfc3339
+BEFORE UPDATE OF started_at ON vms
+WHEN julianday(NEW.started_at) IS NULL
+OR instr(NEW.started_at, 'T') != 11
+OR (
+	substr(NEW.started_at, -1) != 'Z'
+	AND substr(NEW.started_at, -6, 1) NOT IN ('+', '-')
+)
+BEGIN
+	SELECT RAISE(ABORT, 'VM start time must be a valid RFC3339 timestamp');
+END;
+`,
+	},
 }
