@@ -49,14 +49,8 @@ func New(cfg *config.Config, st *store.Store, manager *firecracker.Manager) (*Se
 }
 
 func (s *Server) Serve(ctx context.Context) error {
-	if s == nil {
-		return errors.New("server must be set")
-	}
-	if s.cfg == nil {
-		return errors.New("config must be set")
-	}
-	if ctx == nil {
-		return errors.New("context must be set")
+	if err := s.validateServe(ctx); err != nil {
+		return err
 	}
 	ln, err := net.Listen("tcp", s.cfg.ListenAddr)
 	if err != nil {
@@ -66,11 +60,8 @@ func (s *Server) Serve(ctx context.Context) error {
 }
 
 func (s *Server) ServeListener(ctx context.Context, ln net.Listener) error {
-	if s == nil {
-		return errors.New("server must be set")
-	}
-	if ctx == nil {
-		return errors.New("context must be set")
+	if err := s.validateServe(ctx); err != nil {
+		return err
 	}
 	if ln == nil {
 		return errors.New("listener must be set")
@@ -95,6 +86,28 @@ func (s *Server) ServeListener(ctx context.Context, ln net.Listener) error {
 		}
 		go s.handleConn(ctx, conn)
 	}
+}
+
+func (s *Server) validateServe(ctx context.Context) error {
+	if s == nil {
+		return errors.New("server must be set")
+	}
+	if ctx == nil {
+		return errors.New("context must be set")
+	}
+	if s.cfg == nil {
+		return errors.New("config must be set")
+	}
+	if s.store == nil {
+		return errors.New("store must be set")
+	}
+	if s.manager == nil {
+		return errors.New("firecracker manager must be set")
+	}
+	if s.hostSigner == nil {
+		return errors.New("host signer must be set")
+	}
+	return nil
 }
 
 func (s *Server) handleConn(ctx context.Context, netConn net.Conn) {

@@ -24,11 +24,12 @@ func TestServeListenerReturnsOnContextCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
+	server := newReadyTestServer(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- (&Server{}).ServeListener(ctx, ln)
+		errCh <- server.ServeListener(ctx, ln)
 	}()
 
 	cancel()
@@ -44,6 +45,11 @@ func TestServeListenerReturnsOnContextCancellation(t *testing.T) {
 }
 
 func TestServeRejectsNilDependencies(t *testing.T) {
+	cfg := &config.Config{ListenAddr: "127.0.0.1:0"}
+	st := newTestStore(t)
+	manager := firecracker.NewManager(cfg)
+	signer := newTestSigner(t)
+
 	tests := []struct {
 		name    string
 		server  *Server
@@ -63,8 +69,26 @@ func TestServeRejectsNilDependencies(t *testing.T) {
 		},
 		{
 			name:    "nil context",
-			server:  &Server{cfg: &config.Config{ListenAddr: "127.0.0.1:0"}},
+			server:  &Server{cfg: cfg, store: st, manager: manager, hostSigner: signer},
 			wantErr: "context must be set",
+		},
+		{
+			name:    "nil store",
+			server:  &Server{cfg: cfg, manager: manager, hostSigner: signer},
+			ctx:     context.Background(),
+			wantErr: "store must be set",
+		},
+		{
+			name:    "nil manager",
+			server:  &Server{cfg: cfg, store: st, hostSigner: signer},
+			ctx:     context.Background(),
+			wantErr: "firecracker manager must be set",
+		},
+		{
+			name:    "nil host signer",
+			server:  &Server{cfg: cfg, store: st, manager: manager},
+			ctx:     context.Background(),
+			wantErr: "host signer must be set",
 		},
 	}
 
@@ -84,6 +108,10 @@ func TestServeListenerRejectsNilDependencies(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	defer ln.Close()
+	cfg := &config.Config{}
+	st := newTestStore(t)
+	manager := firecracker.NewManager(cfg)
+	signer := newTestSigner(t)
 
 	tests := []struct {
 		name    string
@@ -106,9 +134,37 @@ func TestServeListenerRejectsNilDependencies(t *testing.T) {
 		},
 		{
 			name:    "nil listener",
-			server:  &Server{},
+			server:  &Server{cfg: cfg, store: st, manager: manager, hostSigner: signer},
 			ctx:     context.Background(),
 			wantErr: "listener must be set",
+		},
+		{
+			name:    "nil config",
+			server:  &Server{store: st, manager: manager, hostSigner: signer},
+			ctx:     context.Background(),
+			ln:      ln,
+			wantErr: "config must be set",
+		},
+		{
+			name:    "nil store",
+			server:  &Server{cfg: cfg, manager: manager, hostSigner: signer},
+			ctx:     context.Background(),
+			ln:      ln,
+			wantErr: "store must be set",
+		},
+		{
+			name:    "nil manager",
+			server:  &Server{cfg: cfg, store: st, hostSigner: signer},
+			ctx:     context.Background(),
+			ln:      ln,
+			wantErr: "firecracker manager must be set",
+		},
+		{
+			name:    "nil host signer",
+			server:  &Server{cfg: cfg, store: st, manager: manager},
+			ctx:     context.Background(),
+			ln:      ln,
+			wantErr: "host signer must be set",
 		},
 	}
 
@@ -424,6 +480,18 @@ func newTestStore(t *testing.T) *store.Store {
 		t.Fatalf("EnsureSchema: %v", err)
 	}
 	return st
+}
+
+func newReadyTestServer(t *testing.T) *Server {
+	t.Helper()
+
+	cfg := &config.Config{ListenAddr: "127.0.0.1:0"}
+	return &Server{
+		cfg:        cfg,
+		store:      newTestStore(t),
+		manager:    firecracker.NewManager(cfg),
+		hostSigner: newTestSigner(t),
+	}
 }
 
 func newTestSigner(t *testing.T) ssh.Signer {
