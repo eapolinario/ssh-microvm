@@ -180,8 +180,12 @@ func validateStartConfig(cfg *config.Config) error {
 	if !sameIPv4Slash24(cfg.GuestIP, cfg.HostIP) {
 		return errors.New("guest IP and host IP must be in the same /24 network")
 	}
-	if sanitizeTapNamePart(cfg.TapPrefix) == "" {
+	sanitizedTapPrefix := sanitizeTapNamePart(cfg.TapPrefix)
+	if sanitizedTapPrefix == "" {
 		return errors.New("tap prefix must contain at least one ASCII letter or digit")
+	}
+	if cfg.TapPrefix != sanitizedTapPrefix {
+		return errors.New("tap prefix must contain only ASCII letters and digits")
 	}
 	return nil
 }

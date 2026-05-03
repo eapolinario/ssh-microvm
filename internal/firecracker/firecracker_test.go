@@ -281,6 +281,13 @@ func TestManagerStartRejectsInvalidConfigBeforeSideEffects(t *testing.T) {
 			},
 			wantErr: "tap prefix must contain at least one ASCII letter or digit",
 		},
+		{
+			name: "tap prefix with invalid characters",
+			mutate: func(cfg *config.Config) {
+				cfg.TapPrefix = "tap-bad"
+			},
+			wantErr: "tap prefix must contain only ASCII letters and digits",
+		},
 	}
 
 	for _, tt := range tests {
