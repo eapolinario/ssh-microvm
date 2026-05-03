@@ -313,6 +313,13 @@ func sanitizeTapNamePart(value string) string {
 }
 
 func waitForSocket(path string, timeout time.Duration) error {
+	if strings.TrimSpace(path) == "" {
+		return errors.New("api socket path is empty")
+	}
+	if timeout <= 0 {
+		return errors.New("api socket timeout must be positive")
+	}
+
 	deadline := time.Now().Add(timeout)
 	var lastErr error
 	for time.Now().Before(deadline) {
@@ -357,6 +364,16 @@ func newUnixClient(sock string) *http.Client {
 }
 
 func putJSON(client *http.Client, path string, payload any) error {
+	if client == nil {
+		return errors.New("http client must be set")
+	}
+	if strings.TrimSpace(path) == "" {
+		return errors.New("firecracker api path is empty")
+	}
+	if !strings.HasPrefix(path, "/") {
+		return fmt.Errorf("firecracker api path must start with /: %s", path)
+	}
+
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return err

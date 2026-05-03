@@ -385,6 +385,43 @@ func TestWaitForSocketHonorsShortTimeout(t *testing.T) {
 	}
 }
 
+func TestWaitForSocketRejectsInvalidState(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		timeout time.Duration
+		wantErr string
+	}{
+		{
+			name:    "blank socket path",
+			path:    " \t ",
+			timeout: time.Second,
+			wantErr: "api socket path is empty",
+		},
+		{
+			name:    "zero timeout",
+			path:    filepath.Join(t.TempDir(), "firecracker.sock"),
+			timeout: 0,
+			wantErr: "api socket timeout must be positive",
+		},
+		{
+			name:    "negative timeout",
+			path:    filepath.Join(t.TempDir(), "firecracker.sock"),
+			timeout: -time.Second,
+			wantErr: "api socket timeout must be positive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := waitForSocket(tt.path, tt.timeout)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestPutJSONOverUnixSocket(t *testing.T) {
 	socketPath := t.TempDir() + "/firecracker.sock"
 	requests := make(chan map[string]any, 1)
@@ -429,6 +466,43 @@ func TestNewUnixClientSetsRequestTimeout(t *testing.T) {
 
 	if client.Timeout != firecrackerAPITimeout {
 		t.Fatalf("newUnixClient() timeout = %v, want %v", client.Timeout, firecrackerAPITimeout)
+	}
+}
+
+func TestPutJSONRejectsInvalidState(t *testing.T) {
+	tests := []struct {
+		name    string
+		client  *http.Client
+		path    string
+		wantErr string
+	}{
+		{
+			name:    "nil client",
+			client:  nil,
+			path:    "/machine-config",
+			wantErr: "http client must be set",
+		},
+		{
+			name:    "blank path",
+			client:  http.DefaultClient,
+			path:    " \t ",
+			wantErr: "firecracker api path is empty",
+		},
+		{
+			name:    "relative path",
+			client:  http.DefaultClient,
+			path:    "machine-config",
+			wantErr: "firecracker api path must start with /",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := putJSON(tt.client, tt.path, map[string]any{"ok": true})
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
 	}
 }
 
