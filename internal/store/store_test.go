@@ -1218,6 +1218,64 @@ func TestAttachVMRequiresExistingVM(t *testing.T) {
 	}
 }
 
+func TestAttachVMRequiresVMForSameSession(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	sessions := []Session{
+		{
+			ID:             "session-1",
+			UserID:         userID,
+			KeyFingerprint: "SHA256:test",
+			RemoteAddr:     "127.0.0.1:2222",
+			StartedAt:      now(),
+			Status:         "active",
+		},
+		{
+			ID:             "session-2",
+			UserID:         userID,
+			KeyFingerprint: "SHA256:test",
+			RemoteAddr:     "127.0.0.1:2223",
+			StartedAt:      now(),
+			Status:         "active",
+		},
+	}
+	for _, session := range sessions {
+		if err := st.CreateSession(ctx, session); err != nil {
+			t.Fatalf("CreateSession %s: %v", session.ID, err)
+		}
+	}
+	vm := VM{
+		ID:        "vm-2",
+		SessionID: sessions[1].ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-2"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	if err := st.CreateVM(ctx, vm); err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+
+	if err := st.AttachVM(ctx, sessions[0].ID, vm.ID); err != sql.ErrNoRows {
+		t.Fatalf("AttachVM cross-session VM error = %v, want sql.ErrNoRows", err)
+	}
+
+	for _, session := range sessions {
+		var attachedVM sql.NullString
+		row := st.db.QueryRowContext(ctx, "SELECT vm_id FROM sessions WHERE id = ?", session.ID)
+		if err := row.Scan(&attachedVM); err != nil {
+			t.Fatalf("query session %s vm_id: %v", session.ID, err)
+		}
+		if attachedVM.Valid {
+			t.Fatalf("session %s vm_id = %q, want NULL", session.ID, attachedVM.String)
+		}
+	}
+}
+
 func TestCreateVMRejectsBlankFields(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
