@@ -282,7 +282,7 @@ func (s *Store) EndSession(ctx context.Context, sessionID, status string) error 
 	if status != "closed" && status != "vm_failed" {
 		return errors.New("session end status must be closed or vm_failed")
 	}
-	return execOne(ctx, s.db, `UPDATE sessions SET ended_at = ?, status = ? WHERE id = ? AND status = 'active' AND ended_at IS NULL`, now(), status, sessionID)
+	return execOne(ctx, s.db, `UPDATE sessions SET ended_at = ?, status = ? WHERE id = ? AND status = 'active' AND ended_at IS NULL AND (? != 'closed' OR vm_id IS NULL OR EXISTS (SELECT 1 FROM vms WHERE id = sessions.vm_id AND ended_at IS NOT NULL))`, now(), status, sessionID, status)
 }
 
 func (s *Store) AttachVM(ctx context.Context, sessionID, vmID string) error {
