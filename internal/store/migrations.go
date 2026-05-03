@@ -288,4 +288,22 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 11,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_vms_fc_pid_insert_valid
+BEFORE INSERT ON vms
+WHEN NEW.fc_pid IS NULL OR NEW.fc_pid <= 0
+BEGIN
+	SELECT RAISE(ABORT, 'VM Firecracker PID must be > 0');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_vms_fc_pid_update_valid
+BEFORE UPDATE OF fc_pid ON vms
+WHEN NEW.fc_pid IS NULL OR NEW.fc_pid <= 0
+BEGIN
+	SELECT RAISE(ABORT, 'VM Firecracker PID must be > 0');
+END;
+`,
+	},
 }

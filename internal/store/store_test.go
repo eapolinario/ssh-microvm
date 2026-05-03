@@ -95,6 +95,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 10 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 11")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 11: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 11 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -105,6 +112,71 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("table %s count = %d, want 1", table, count)
 		}
+	}
+}
+
+func TestEnsureSchemaEnforcesVMFirecrackerPIDValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: testKeyFingerprint,
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name  string
+		fcPID any
+	}{
+		{name: "null PID", fcPID: nil},
+		{name: "zero PID", fcPID: 0},
+		{name: "negative PID", fcPID: -1},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "bad-"+tt.name, session.ID, filepath.Join(t.TempDir(), tt.name), tt.fcPID, now()); err == nil {
+				t.Fatalf("inserted VM with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO vms(id, session_id, state_dir, fc_pid, started_at)
+VALUES(?, ?, ?, ?, ?)`, "vm-1", session.ID, filepath.Join(t.TempDir(), "vm-1"), 1234, now()); err != nil {
+		t.Fatalf("insert valid VM: %v", err)
+	}
+	for _, tt := range []struct {
+		name  string
+		fcPID any
+	}{
+		{name: "null PID", fcPID: nil},
+		{name: "zero PID", fcPID: 0},
+		{name: "negative PID", fcPID: -1},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE vms SET fc_pid = ? WHERE id = ?", tt.fcPID, "vm-1"); err == nil {
+				t.Fatalf("updated VM to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var fcPID int
+	row := st.db.QueryRowContext(ctx, "SELECT fc_pid FROM vms WHERE id = ?", "vm-1")
+	if err := row.Scan(&fcPID); err != nil {
+		t.Fatalf("query VM fc_pid: %v", err)
+	}
+	if fcPID != 1234 {
+		t.Fatalf("VM fc_pid = %d, want 1234", fcPID)
 	}
 }
 
