@@ -1042,6 +1042,60 @@ func TestEndVMRejectsNegativeExitStatus(t *testing.T) {
 	}
 }
 
+func TestEndVMRejectsAlreadyEndedVM(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	userID, err := st.EnsureUserAndKey(ctx, "alice", "SHA256:test", "ssh-ed25519 AAAA alice")
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey: %v", err)
+	}
+	session := Session{
+		ID:             "session-1",
+		UserID:         userID,
+		KeyFingerprint: "SHA256:test",
+		RemoteAddr:     "127.0.0.1:2222",
+		StartedAt:      now(),
+		Status:         "active",
+	}
+	if err := st.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	vm := VM{
+		ID:        "vm-1",
+		SessionID: session.ID,
+		StateDir:  filepath.Join(t.TempDir(), "vm-1"),
+		FCPid:     1234,
+		StartedAt: now(),
+	}
+	if err := st.CreateVM(ctx, vm); err != nil {
+		t.Fatalf("CreateVM: %v", err)
+	}
+	if err := st.EndVM(ctx, vm.ID, 7); err != nil {
+		t.Fatalf("EndVM: %v", err)
+	}
+
+	err = st.EndVM(ctx, vm.ID, 9)
+	if err != sql.ErrNoRows {
+		t.Fatalf("second EndVM error = %v, want sql.ErrNoRows", err)
+	}
+
+	var (
+		endedAt    string
+		exitStatus int
+	)
+	row := st.db.QueryRowContext(ctx, "SELECT ended_at, exit_status FROM vms WHERE id = ?", vm.ID)
+	if err := row.Scan(&endedAt, &exitStatus); err != nil {
+		t.Fatalf("query VM lifecycle state: %v", err)
+	}
+	if endedAt == "" {
+		t.Fatalf("VM ended_at was not set by first EndVM")
+	}
+	if exitStatus != 7 {
+		t.Fatalf("VM exit_status = %d, want 7", exitStatus)
+	}
+}
+
 func TestEndSessionRejectsUnsupportedTerminalStatus(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()

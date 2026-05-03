@@ -330,7 +330,7 @@ func (s *Store) EndVM(ctx context.Context, vmID string, exitStatus int) error {
 	if exitStatus < 0 {
 		return errors.New("VM exit status must be >= 0")
 	}
-	return execOne(ctx, s.db, `UPDATE vms SET ended_at = ?, exit_status = ? WHERE id = ?`, now(), exitStatus, vmID)
+	return execOne(ctx, s.db, `UPDATE vms SET ended_at = ?, exit_status = ? WHERE id = ? AND ended_at IS NULL`, now(), exitStatus, vmID)
 }
 
 func (s *Store) Audit(ctx context.Context, eventType, dataJSON string) error {
