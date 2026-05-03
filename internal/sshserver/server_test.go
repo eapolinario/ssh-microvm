@@ -619,6 +619,49 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 	}
 }
 
+func TestHandleChannelsRejectsInvalidState(t *testing.T) {
+	validVM := &firecracker.VM{GuestIP: "127.0.0.1"}
+
+	tests := []struct {
+		name     string
+		server   *Server
+		channels <-chan ssh.NewChannel
+		vm       *firecracker.VM
+	}{
+		{
+			name:     "nil server",
+			channels: make(chan ssh.NewChannel),
+			vm:       validVM,
+		},
+		{
+			name:   "nil channel stream",
+			server: &Server{},
+			vm:     validVM,
+		},
+		{
+			name:     "nil VM",
+			server:   &Server{},
+			channels: make(chan ssh.NewChannel),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			done := make(chan struct{})
+			go func() {
+				tt.server.handleChannels(tt.channels, tt.vm)
+				close(done)
+			}()
+
+			select {
+			case <-done:
+			case <-time.After(100 * time.Millisecond):
+				t.Fatalf("handleChannels did not return for invalid state")
+			}
+		})
+	}
+}
+
 func TestHandleSessionRejectsInvalidState(t *testing.T) {
 	validRequests := make(chan *ssh.Request)
 	close(validRequests)

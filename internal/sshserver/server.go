@@ -215,6 +215,19 @@ func (s *Server) handleConn(ctx context.Context, netConn net.Conn) {
 }
 
 func (s *Server) handleChannels(channels <-chan ssh.NewChannel, vm *firecracker.VM) {
+	if s == nil {
+		log.Printf("ssh channels rejected: server must be set")
+		return
+	}
+	if channels == nil {
+		log.Printf("ssh channels rejected: channel stream must be set")
+		return
+	}
+	if vm == nil {
+		log.Printf("ssh channels rejected: vm not available")
+		return
+	}
+
 	for ch := range channels {
 		if ch.ChannelType() != "session" {
 			_ = ch.Reject(ssh.UnknownChannelType, "unknown channel type")
