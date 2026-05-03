@@ -72,6 +72,7 @@ func TestSSHStartsVM(t *testing.T) {
 		GuestKeyPath:  guestKey,
 		GuestIP:       "172.16.0.2",
 		HostIP:        "172.16.0.1",
+		TapPrefix:     "tap",
 	}
 
 	st, err := store.New(cfg.DBPath)
