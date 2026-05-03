@@ -130,6 +130,11 @@ func TestServeRejectsInvalidListenAddrBeforeListen(t *testing.T) {
 			listenAddr: "127.0.0.1:not-a-port",
 			wantErr:    "listen address port must be valid",
 		},
+		{
+			name:       "unresolvable listen address",
+			listenAddr: "999.0.0.1:22",
+			wantErr:    "listen address must resolve to a valid TCP address",
+		},
 	}
 
 	for _, tt := range tests {
