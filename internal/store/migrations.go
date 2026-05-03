@@ -692,4 +692,32 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 27,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_created_at_insert_rfc3339
+BEFORE INSERT ON audit_events
+WHEN julianday(NEW.created_at) IS NULL
+OR instr(NEW.created_at, 'T') != 11
+OR (
+	substr(NEW.created_at, -1) != 'Z'
+	AND substr(NEW.created_at, -6, 1) NOT IN ('+', '-')
+)
+BEGIN
+	SELECT RAISE(ABORT, 'audit event creation time must be a valid RFC3339 timestamp');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_audit_events_created_at_update_rfc3339
+BEFORE UPDATE OF created_at ON audit_events
+WHEN julianday(NEW.created_at) IS NULL
+OR instr(NEW.created_at, 'T') != 11
+OR (
+	substr(NEW.created_at, -1) != 'Z'
+	AND substr(NEW.created_at, -6, 1) NOT IN ('+', '-')
+)
+BEGIN
+	SELECT RAISE(ABORT, 'audit event creation time must be a valid RFC3339 timestamp');
+END;
+`,
+	},
 }

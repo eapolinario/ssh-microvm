@@ -207,6 +207,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 26 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 27")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 27: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 27 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -418,6 +425,50 @@ VALUES(?, ?, ?, ?)`, "audit-1", "test.audit", `{"ok":true}`, createdAt); err != 
 	}
 	if gotCreatedAt != createdAt {
 		t.Fatalf("audit created_at = %q, want %q", gotCreatedAt, createdAt)
+	}
+}
+
+func TestEnsureSchemaEnforcesAuditCreatedAtFormat(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	for _, tt := range []struct {
+		name      string
+		eventID   string
+		createdAt string
+	}{
+		{name: "space separated creation time", eventID: "bad-space-created-at", createdAt: "2026-05-03 14:03:32"},
+		{name: "missing timezone creation time", eventID: "bad-missing-timezone-created-at", createdAt: "2026-05-03T14:03:32"},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO audit_events(id, event_type, data_json, created_at)
+VALUES(?, ?, ?, ?)`, tt.eventID, "test.audit", `{"ok":true}`, tt.createdAt); err == nil {
+				t.Fatalf("inserted audit event with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	createdAt := "2026-05-03T14:03:32Z"
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO audit_events(id, event_type, data_json, created_at)
+VALUES(?, ?, ?, ?)`, "audit-1", "test.audit", `{"ok":true}`, createdAt); err != nil {
+		t.Fatalf("insert valid audit event: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE audit_events SET created_at = ? WHERE id = ?", "2026-05-03 14:03:32", "audit-1"); err == nil {
+		t.Fatalf("updated audit event to space separated creation time, want trigger error")
+	}
+
+	validOffsetTime := "2026-05-03T14:03:32-04:00"
+	if _, err := st.db.ExecContext(ctx, "UPDATE audit_events SET created_at = ? WHERE id = ?", validOffsetTime, "audit-1"); err != nil {
+		t.Fatalf("updated audit event to valid offset creation time: %v", err)
+	}
+
+	var gotCreatedAt string
+	row := st.db.QueryRowContext(ctx, "SELECT created_at FROM audit_events WHERE id = ?", "audit-1")
+	if err := row.Scan(&gotCreatedAt); err != nil {
+		t.Fatalf("query audit event created_at: %v", err)
+	}
+	if gotCreatedAt != validOffsetTime {
+		t.Fatalf("audit created_at = %q, want %q", gotCreatedAt, validOffsetTime)
 	}
 }
 
