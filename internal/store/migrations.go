@@ -720,4 +720,24 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 28,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_users_username_insert_valid
+BEFORE INSERT ON users
+WHEN trim(NEW.username, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.username != trim(NEW.username, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'username must be set and not contain surrounding whitespace');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_users_username_update_valid
+BEFORE UPDATE OF username ON users
+WHEN trim(NEW.username, char(9, 10, 11, 12, 13, 32)) = ''
+OR NEW.username != trim(NEW.username, char(9, 10, 11, 12, 13, 32))
+BEGIN
+	SELECT RAISE(ABORT, 'username must be set and not contain surrounding whitespace');
+END;
+`,
+	},
 }
