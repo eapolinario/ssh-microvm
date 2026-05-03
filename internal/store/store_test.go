@@ -249,6 +249,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 32 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 33")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 33: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 33 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -484,6 +491,57 @@ func TestEnsureSchemaEnforcesUserLastSeenAtFormat(t *testing.T) {
 	}
 	if gotLastSeenAt != validOffsetTime {
 		t.Fatalf("user last_seen_at = %q, want %q", gotLastSeenAt, validOffsetTime)
+	}
+}
+
+func TestEnsureSchemaEnforcesKeyFingerprintValues(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.db.ExecContext(ctx, "INSERT INTO users(id, username, created_at, last_seen_at) VALUES(?, ?, ?, ?)", "user-1", "alice", now(), now()); err != nil {
+		t.Fatalf("insert user fixture: %v", err)
+	}
+
+	for _, tt := range []struct {
+		name        string
+		fingerprint string
+	}{
+		{name: "blank fingerprint", fingerprint: " \t "},
+		{name: "padded fingerprint", fingerprint: " " + testKeyFingerprint + " "},
+	} {
+		t.Run("insert "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, tt.fingerprint, "user-1", testAuthorizedKey, now(), now()); err == nil {
+				t.Fatalf("inserted key with %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO keys(fingerprint, user_id, public_key, added_at, last_seen_at)
+VALUES(?, ?, ?, ?, ?)`, testKeyFingerprint, "user-1", testAuthorizedKey, now(), now()); err != nil {
+		t.Fatalf("insert valid key: %v", err)
+	}
+	for _, tt := range []struct {
+		name        string
+		fingerprint string
+	}{
+		{name: "blank fingerprint", fingerprint: "\n\t"},
+		{name: "padded fingerprint", fingerprint: "\t" + testOtherKeyFingerprint + "\n"},
+	} {
+		t.Run("update "+tt.name, func(t *testing.T) {
+			if _, err := st.db.ExecContext(ctx, "UPDATE keys SET fingerprint = ? WHERE fingerprint = ?", tt.fingerprint, testKeyFingerprint); err == nil {
+				t.Fatalf("updated key to %s, want trigger error", tt.name)
+			}
+		})
+	}
+
+	var gotFingerprint string
+	row := st.db.QueryRowContext(ctx, "SELECT fingerprint FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&gotFingerprint); err != nil {
+		t.Fatalf("query key fingerprint: %v", err)
+	}
+	if gotFingerprint != testKeyFingerprint {
+		t.Fatalf("key fingerprint = %q, want %q", gotFingerprint, testKeyFingerprint)
 	}
 }
 
