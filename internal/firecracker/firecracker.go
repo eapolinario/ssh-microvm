@@ -233,8 +233,14 @@ func randomMAC(seed string) string {
 }
 
 func setupTap(ctx context.Context, tapName, hostIP string) error {
-	if tapName == "" {
+	if ctx == nil {
+		return errors.New("context must be set")
+	}
+	if strings.TrimSpace(tapName) == "" {
 		return errors.New("tap name is empty")
+	}
+	if strings.TrimSpace(hostIP) == "" {
+		return errors.New("host IP is empty")
 	}
 	if err := runCmd(ctx, "sudo", "ip", "tuntap", "add", "dev", tapName, "mode", "tap"); err != nil {
 		return err
@@ -251,13 +257,22 @@ func setupTap(ctx context.Context, tapName, hostIP string) error {
 }
 
 func teardownTap(ctx context.Context, tapName string) error {
-	if tapName == "" {
+	if strings.TrimSpace(tapName) == "" {
 		return nil
+	}
+	if ctx == nil {
+		return errors.New("context must be set")
 	}
 	return runCmd(ctx, "sudo", "ip", "link", "del", tapName)
 }
 
 func runCmd(ctx context.Context, name string, args ...string) error {
+	if ctx == nil {
+		return errors.New("context must be set")
+	}
+	if strings.TrimSpace(name) == "" {
+		return errors.New("command name is empty")
+	}
 	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

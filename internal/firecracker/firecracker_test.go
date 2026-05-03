@@ -284,6 +284,66 @@ func TestRandomMACIsDeterministicAndLocallyAdministered(t *testing.T) {
 	}
 }
 
+func TestTapCommandHelpersRejectInvalidState(t *testing.T) {
+	tests := []struct {
+		name    string
+		run     func() error
+		wantErr string
+	}{
+		{
+			name: "setupTap nil context",
+			run: func() error {
+				return setupTap(nil, "tap0", "172.16.0.1")
+			},
+			wantErr: "context must be set",
+		},
+		{
+			name: "setupTap blank tap name",
+			run: func() error {
+				return setupTap(context.Background(), " \t ", "172.16.0.1")
+			},
+			wantErr: "tap name is empty",
+		},
+		{
+			name: "setupTap blank host IP",
+			run: func() error {
+				return setupTap(context.Background(), "tap0", " \t ")
+			},
+			wantErr: "host IP is empty",
+		},
+		{
+			name: "teardownTap nil context",
+			run: func() error {
+				return teardownTap(nil, "tap0")
+			},
+			wantErr: "context must be set",
+		},
+		{
+			name: "runCmd nil context",
+			run: func() error {
+				return runCmd(nil, "true")
+			},
+			wantErr: "context must be set",
+		},
+		{
+			name: "runCmd blank command name",
+			run: func() error {
+				return runCmd(context.Background(), " \t ")
+			},
+			wantErr: "command name is empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.run()
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestWaitForSocket(t *testing.T) {
 	socketPath := t.TempDir() + "/firecracker.sock"
 
