@@ -196,6 +196,18 @@ func TestWaitForSocketRejectsNonSocketPath(t *testing.T) {
 	}
 }
 
+func TestWaitForSocketHonorsShortTimeout(t *testing.T) {
+	socketPath := filepath.Join(t.TempDir(), "firecracker.sock")
+
+	start := time.Now()
+	if err := waitForSocket(socketPath, 20*time.Millisecond); err == nil {
+		t.Fatalf("waitForSocket() succeeded for missing socket")
+	}
+	if elapsed := time.Since(start); elapsed > 45*time.Millisecond {
+		t.Fatalf("waitForSocket() elapsed = %v, want short timeout honored", elapsed)
+	}
+}
+
 func TestPutJSONOverUnixSocket(t *testing.T) {
 	socketPath := t.TempDir() + "/firecracker.sock"
 	requests := make(chan map[string]any, 1)

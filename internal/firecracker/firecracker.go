@@ -286,14 +286,24 @@ func waitForSocket(path string, timeout time.Duration) error {
 		} else if info.Mode()&os.ModeSocket == 0 {
 			lastErr = fmt.Errorf("%s exists but is not a unix socket", path)
 		} else {
-			conn, err := net.DialTimeout("unix", path, 50*time.Millisecond)
+			dialTimeout := time.Until(deadline)
+			if dialTimeout > 50*time.Millisecond {
+				dialTimeout = 50 * time.Millisecond
+			}
+			conn, err := net.DialTimeout("unix", path, dialTimeout)
 			if err == nil {
 				_ = conn.Close()
 				return nil
 			}
 			lastErr = err
 		}
-		time.Sleep(50 * time.Millisecond)
+		sleepFor := time.Until(deadline)
+		if sleepFor > 50*time.Millisecond {
+			sleepFor = 50 * time.Millisecond
+		}
+		if sleepFor > 0 {
+			time.Sleep(sleepFor)
+		}
 	}
 	if lastErr != nil {
 		return fmt.Errorf("timeout waiting for api socket %s: %w", path, lastErr)
