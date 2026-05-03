@@ -47,7 +47,7 @@ func TestServeListenerReturnsOnContextCancellation(t *testing.T) {
 }
 
 func TestServeRejectsNilDependencies(t *testing.T) {
-	cfg := &config.Config{ListenAddr: "127.0.0.1:0"}
+	cfg := &config.Config{ListenAddr: "127.0.0.1:0", AuthMode: config.AuthModeAutoEnroll}
 	st := newTestStore(t)
 	manager := firecracker.NewManager(cfg)
 	signer := newTestSigner(t)
@@ -148,13 +148,52 @@ func TestServeRejectsInvalidListenAddrBeforeListen(t *testing.T) {
 	}
 }
 
+func TestServeRejectsInvalidAuthModeBeforeListen(t *testing.T) {
+	tests := []struct {
+		name     string
+		authMode string
+		wantErr  string
+	}{
+		{
+			name:     "blank auth mode",
+			authMode: " \t ",
+			wantErr:  "auth mode must be set",
+		},
+		{
+			name:     "auth mode with surrounding whitespace",
+			authMode: " " + config.AuthModeKnownKeys + " ",
+			wantErr:  "auth mode must not contain surrounding whitespace",
+		},
+		{
+			name:     "invalid auth mode",
+			authMode: "bogus",
+			wantErr:  "invalid auth mode: bogus",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := newReadyTestServer(t)
+			server.cfg.AuthMode = tt.authMode
+
+			err := server.Serve(context.Background())
+			if err == nil {
+				t.Fatalf("Serve succeeded, want error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("Serve error = %q, want containing %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestServeListenerRejectsNilDependencies(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
 	defer ln.Close()
-	cfg := &config.Config{}
+	cfg := &config.Config{AuthMode: config.AuthModeAutoEnroll}
 	st := newTestStore(t)
 	manager := firecracker.NewManager(cfg)
 	signer := newTestSigner(t)
@@ -226,7 +265,7 @@ func TestServeListenerRejectsNilDependencies(t *testing.T) {
 
 func TestHandleConnRejectsInvalidState(t *testing.T) {
 	readyServer := newReadyTestServer(t)
-	cfg := &config.Config{ListenAddr: "127.0.0.1:0"}
+	cfg := &config.Config{ListenAddr: "127.0.0.1:0", AuthMode: config.AuthModeAutoEnroll}
 	st := newTestStore(t)
 	manager := firecracker.NewManager(cfg)
 	signer := newTestSigner(t)
@@ -305,7 +344,7 @@ func TestHandleConnRejectsInvalidState(t *testing.T) {
 }
 
 func TestNewRejectsNilDependencies(t *testing.T) {
-	cfg := &config.Config{HostKeyPath: filepath.Join(t.TempDir(), "ssh_host_ed25519")}
+	cfg := &config.Config{HostKeyPath: filepath.Join(t.TempDir(), "ssh_host_ed25519"), AuthMode: config.AuthModeAutoEnroll}
 	st := newTestStore(t)
 	manager := firecracker.NewManager(cfg)
 
@@ -347,6 +386,54 @@ func TestNewRejectsNilDependencies(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("New error = %q, want to contain %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestNewRejectsInvalidAuthModeBeforeHostKeySideEffects(t *testing.T) {
+	tests := []struct {
+		name     string
+		authMode string
+		wantErr  string
+	}{
+		{
+			name:     "blank auth mode",
+			authMode: " \t ",
+			wantErr:  "auth mode must be set",
+		},
+		{
+			name:     "auth mode with surrounding whitespace",
+			authMode: " " + config.AuthModeKnownKeys + " ",
+			wantErr:  "auth mode must not contain surrounding whitespace",
+		},
+		{
+			name:     "invalid auth mode",
+			authMode: "bogus",
+			wantErr:  "invalid auth mode: bogus",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hostKeyPath := filepath.Join(t.TempDir(), "ssh_host_ed25519")
+			cfg := &config.Config{
+				HostKeyPath: hostKeyPath,
+				AuthMode:    tt.authMode,
+			}
+
+			server, err := New(cfg, newTestStore(t), firecracker.NewManager(cfg))
+			if err == nil {
+				t.Fatalf("New succeeded, want error containing %q", tt.wantErr)
+			}
+			if server != nil {
+				t.Fatalf("New returned server %#v, want nil", server)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("New error = %q, want containing %q", err, tt.wantErr)
+			}
+			if _, statErr := os.Stat(hostKeyPath); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("New created or touched host key before validating auth mode: stat error = %v", statErr)
 			}
 		})
 	}
@@ -617,6 +704,12 @@ func TestPublicKeyCallbackRejectsInvalidState(t *testing.T) {
 			server:  &Server{cfg: &config.Config{AuthMode: "bogus"}},
 			key:     key,
 			wantErr: "invalid auth mode: bogus",
+		},
+		{
+			name:    "auth mode with surrounding whitespace",
+			server:  &Server{cfg: &config.Config{AuthMode: " " + config.AuthModeAutoEnroll + " "}},
+			key:     key,
+			wantErr: "auth mode must not contain surrounding whitespace",
 		},
 	}
 
@@ -1323,7 +1416,7 @@ func newTestStore(t *testing.T) *store.Store {
 func newReadyTestServer(t *testing.T) *Server {
 	t.Helper()
 
-	cfg := &config.Config{ListenAddr: "127.0.0.1:0"}
+	cfg := &config.Config{ListenAddr: "127.0.0.1:0", AuthMode: config.AuthModeAutoEnroll}
 	return &Server{
 		cfg:        cfg,
 		store:      newTestStore(t),

@@ -42,6 +42,9 @@ func New(cfg *config.Config, st *store.Store, manager *firecracker.Manager) (*Se
 	if manager == nil {
 		return nil, errors.New("firecracker manager must be set")
 	}
+	if err := validateAuthMode(cfg.AuthMode); err != nil {
+		return nil, err
+	}
 	signer, err := loadOrCreateHostKey(cfg.HostKeyPath)
 	if err != nil {
 		return nil, err
@@ -51,6 +54,9 @@ func New(cfg *config.Config, st *store.Store, manager *firecracker.Manager) (*Se
 
 func (s *Server) Serve(ctx context.Context) error {
 	if err := s.validateServe(ctx); err != nil {
+		return err
+	}
+	if err := validateAuthMode(s.cfg.AuthMode); err != nil {
 		return err
 	}
 	if err := validateListenAddr(s.cfg.ListenAddr); err != nil {
@@ -69,6 +75,9 @@ func (s *Server) ServeListener(ctx context.Context, ln net.Listener) error {
 	}
 	if ln == nil {
 		return errors.New("listener must be set")
+	}
+	if err := validateAuthMode(s.cfg.AuthMode); err != nil {
+		return err
 	}
 	defer ln.Close()
 
@@ -381,6 +390,10 @@ func (s *Server) publicKeyCallback(conn ssh.ConnMetadata, key ssh.PublicKey) (*s
 	fingerprint := ssh.FingerprintSHA256(key)
 	pubKey := string(ssh.MarshalAuthorizedKey(key))
 
+	if err := validateAuthMode(s.cfg.AuthMode); err != nil {
+		return nil, err
+	}
+
 	switch s.cfg.AuthMode {
 	case config.AuthModeAutoEnroll:
 	case config.AuthModeKnownKeys:
@@ -463,6 +476,19 @@ func ensureHostKeyDir(path string) error {
 	}
 	if info.Mode().Perm()&0o022 != 0 {
 		return fmt.Errorf("host key directory %s permissions too open: %v", path, info.Mode().Perm())
+	}
+	return nil
+}
+
+func validateAuthMode(authMode string) error {
+	if strings.TrimSpace(authMode) == "" {
+		return errors.New("auth mode must be set")
+	}
+	if authMode != strings.TrimSpace(authMode) {
+		return errors.New("auth mode must not contain surrounding whitespace")
+	}
+	if authMode != config.AuthModeAutoEnroll && authMode != config.AuthModeKnownKeys {
+		return fmt.Errorf("invalid auth mode: %s", authMode)
 	}
 	return nil
 }
