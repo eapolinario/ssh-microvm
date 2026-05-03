@@ -896,4 +896,32 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 36,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_keys_added_at_insert_rfc3339
+BEFORE INSERT ON keys
+WHEN julianday(NEW.added_at) IS NULL
+OR instr(NEW.added_at, 'T') != 11
+OR (
+	substr(NEW.added_at, -1) != 'Z'
+	AND substr(NEW.added_at, -6, 1) NOT IN ('+', '-')
+)
+BEGIN
+	SELECT RAISE(ABORT, 'key addition time must be a valid RFC3339 timestamp');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_added_at_update_rfc3339
+BEFORE UPDATE OF added_at ON keys
+WHEN julianday(NEW.added_at) IS NULL
+OR instr(NEW.added_at, 'T') != 11
+OR (
+	substr(NEW.added_at, -1) != 'Z'
+	AND substr(NEW.added_at, -6, 1) NOT IN ('+', '-')
+)
+BEGIN
+	SELECT RAISE(ABORT, 'key addition time must be a valid RFC3339 timestamp');
+END;
+`,
+	},
 }
