@@ -122,4 +122,41 @@ BEGIN
 END;
 `,
 	},
+	{
+		version: 5,
+		sql: `
+CREATE TRIGGER IF NOT EXISTS trg_sessions_key_owner_insert_valid
+BEFORE INSERT ON sessions
+WHEN NOT EXISTS (
+	SELECT 1 FROM keys
+	WHERE fingerprint = NEW.key_fingerprint
+	AND user_id = NEW.user_id
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session key must belong to session user');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_sessions_key_owner_update_valid
+BEFORE UPDATE OF user_id, key_fingerprint ON sessions
+WHEN NOT EXISTS (
+	SELECT 1 FROM keys
+	WHERE fingerprint = NEW.key_fingerprint
+	AND user_id = NEW.user_id
+)
+BEGIN
+	SELECT RAISE(ABORT, 'session key must belong to session user');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_keys_owner_update_preserves_sessions
+BEFORE UPDATE OF fingerprint, user_id ON keys
+WHEN EXISTS (
+	SELECT 1 FROM sessions
+	WHERE key_fingerprint = OLD.fingerprint
+	AND (NEW.fingerprint != OLD.fingerprint OR user_id != NEW.user_id)
+)
+BEGIN
+	SELECT RAISE(ABORT, 'referenced key ownership must not break session link');
+END;
+`,
+	},
 }

@@ -53,6 +53,13 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 	if migrationCount != 1 {
 		t.Fatalf("version 4 migration count = %d, want 1", migrationCount)
 	}
+	row = st.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM schema_migrations WHERE version = 5")
+	if err := row.Scan(&migrationCount); err != nil {
+		t.Fatalf("query schema_migrations version 5: %v", err)
+	}
+	if migrationCount != 1 {
+		t.Fatalf("version 5 migration count = %d, want 1", migrationCount)
+	}
 
 	for _, table := range []string{"users", "keys", "sessions", "vms", "audit_events"} {
 		var count int
@@ -63,6 +70,53 @@ func TestEnsureSchemaIsIdempotent(t *testing.T) {
 		if count != 1 {
 			t.Fatalf("table %s count = %d, want 1", table, count)
 		}
+	}
+}
+
+func TestEnsureSchemaEnforcesSessionKeyOwnership(t *testing.T) {
+	st := newTestStore(t)
+	ctx := context.Background()
+
+	aliceID, err := st.EnsureUserAndKey(ctx, "alice", testKeyFingerprint, testAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey alice: %v", err)
+	}
+	bobID, err := st.EnsureUserAndKey(ctx, "bob", testOtherKeyFingerprint, testOtherAuthorizedKey)
+	if err != nil {
+		t.Fatalf("EnsureUserAndKey bob: %v", err)
+	}
+
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "cross-key-session", aliceID, testOtherKeyFingerprint, "127.0.0.1:2222", now(), "active"); err == nil {
+		t.Fatalf("inserted session with another user's key, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, `INSERT INTO sessions(id, user_id, key_fingerprint, remote_addr, started_at, status)
+VALUES(?, ?, ?, ?, ?, ?)`, "session-1", aliceID, testKeyFingerprint, "127.0.0.1:2222", now(), "active"); err != nil {
+		t.Fatalf("insert valid session: %v", err)
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE sessions SET key_fingerprint = ? WHERE id = ?", testOtherKeyFingerprint, "session-1"); err == nil {
+		t.Fatalf("updated session to another user's key, want trigger error")
+	}
+	if _, err := st.db.ExecContext(ctx, "UPDATE keys SET user_id = ? WHERE fingerprint = ?", bobID, testKeyFingerprint); err == nil {
+		t.Fatalf("reassigned referenced key to another user, want trigger error")
+	}
+
+	var sessionUserID, sessionKeyFingerprint string
+	row := st.db.QueryRowContext(ctx, "SELECT user_id, key_fingerprint FROM sessions WHERE id = ?", "session-1")
+	if err := row.Scan(&sessionUserID, &sessionKeyFingerprint); err != nil {
+		t.Fatalf("query session: %v", err)
+	}
+	if sessionUserID != aliceID || sessionKeyFingerprint != testKeyFingerprint {
+		t.Fatalf("session ownership = (%q, %q), want (%q, %q)", sessionUserID, sessionKeyFingerprint, aliceID, testKeyFingerprint)
+	}
+
+	var keyUserID string
+	row = st.db.QueryRowContext(ctx, "SELECT user_id FROM keys WHERE fingerprint = ?", testKeyFingerprint)
+	if err := row.Scan(&keyUserID); err != nil {
+		t.Fatalf("query key: %v", err)
+	}
+	if keyUserID != aliceID {
+		t.Fatalf("key user_id = %q, want %q", keyUserID, aliceID)
 	}
 }
 
