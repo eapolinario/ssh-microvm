@@ -855,13 +855,13 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			wantErr: "guest IP must be a valid IPv4 address",
 		},
 		{
-			name:    "non-canonical guest IP",
+			name:    "guest IP with surrounding whitespace",
 			server:  validServer,
 			channel: validChannel,
 			winCh:   validWinCh,
 			shell:   true,
 			vm:      &firecracker.VM{GuestIP: " 127.0.0.1 "},
-			wantErr: "guest IP must be a valid IPv4 address",
+			wantErr: "guest IP must not contain surrounding whitespace",
 		},
 		{
 			name:    "blank guest user",
@@ -1089,10 +1089,10 @@ func TestDialGuestRejectsInvalidState(t *testing.T) {
 			wantErr: "guest IP must be a valid IPv4 address",
 		},
 		{
-			name:    "non-canonical guest IP",
+			name:    "guest IP with surrounding whitespace",
 			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: "/keys/guest"}},
 			guestIP: " 127.0.0.1 ",
-			wantErr: "guest IP must be a valid IPv4 address",
+			wantErr: "guest IP must not contain surrounding whitespace",
 		},
 		{
 			name:    "blank guest user",

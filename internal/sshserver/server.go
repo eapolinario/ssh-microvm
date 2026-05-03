@@ -650,6 +650,9 @@ func (s *Server) validateGuestDial(guestIP string) error {
 	if strings.TrimSpace(guestIP) == "" {
 		return errors.New("guest IP must be set")
 	}
+	if guestIP != strings.TrimSpace(guestIP) {
+		return errors.New("guest IP must not contain surrounding whitespace")
+	}
 	if !isIPv4(guestIP) {
 		return fmt.Errorf("guest IP must be a valid IPv4 address: %s", guestIP)
 	}
