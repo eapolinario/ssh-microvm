@@ -32,6 +32,15 @@ type Server struct {
 }
 
 func New(cfg *config.Config, st *store.Store, manager *firecracker.Manager) (*Server, error) {
+	if cfg == nil {
+		return nil, errors.New("config must be set")
+	}
+	if st == nil {
+		return nil, errors.New("store must be set")
+	}
+	if manager == nil {
+		return nil, errors.New("firecracker manager must be set")
+	}
 	signer, err := loadOrCreateHostKey(cfg.HostKeyPath)
 	if err != nil {
 		return nil, err

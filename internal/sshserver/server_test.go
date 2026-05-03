@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"ssh-microvm/internal/config"
+	"ssh-microvm/internal/firecracker"
 	"ssh-microvm/internal/store"
 )
 
@@ -39,6 +40,54 @@ func TestServeListenerReturnsOnContextCancellation(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatalf("ServeListener did not return after context cancellation")
+	}
+}
+
+func TestNewRejectsNilDependencies(t *testing.T) {
+	cfg := &config.Config{HostKeyPath: filepath.Join(t.TempDir(), "ssh_host_ed25519")}
+	st := newTestStore(t)
+	manager := firecracker.NewManager(cfg)
+
+	tests := []struct {
+		name    string
+		cfg     *config.Config
+		store   *store.Store
+		manager *firecracker.Manager
+		wantErr string
+	}{
+		{
+			name:    "nil config",
+			store:   st,
+			manager: manager,
+			wantErr: "config must be set",
+		},
+		{
+			name:    "nil store",
+			cfg:     cfg,
+			manager: manager,
+			wantErr: "store must be set",
+		},
+		{
+			name:    "nil manager",
+			cfg:     cfg,
+			store:   st,
+			wantErr: "firecracker manager must be set",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server, err := New(tt.cfg, tt.store, tt.manager)
+			if err == nil {
+				t.Fatalf("New succeeded, want error containing %q", tt.wantErr)
+			}
+			if server != nil {
+				t.Fatalf("New returned server %#v, want nil", server)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("New error = %q, want to contain %q", err, tt.wantErr)
+			}
+		})
 	}
 }
 
