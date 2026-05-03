@@ -568,6 +568,8 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 		server  *Server
 		channel ssh.Channel
 		winCh   <-chan windowChange
+		shell   bool
+		execCmd string
 		vm      *firecracker.VM
 		wantErr string
 	}{
@@ -575,6 +577,7 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			name:    "nil server",
 			channel: validChannel,
 			winCh:   validWinCh,
+			shell:   true,
 			vm:      validVM,
 			wantErr: "server must be set",
 		},
@@ -583,6 +586,7 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			server:  &Server{},
 			channel: validChannel,
 			winCh:   validWinCh,
+			shell:   true,
 			vm:      validVM,
 			wantErr: "config must be set",
 		},
@@ -590,6 +594,7 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			name:    "nil channel",
 			server:  validServer,
 			winCh:   validWinCh,
+			shell:   true,
 			vm:      validVM,
 			wantErr: "ssh channel must be set",
 		},
@@ -598,20 +603,32 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			server:  validServer,
 			channel: validChannel,
 			winCh:   validWinCh,
+			shell:   true,
 			wantErr: "vm not available",
 		},
 		{
 			name:    "nil window change channel",
 			server:  validServer,
 			channel: validChannel,
+			shell:   true,
 			vm:      validVM,
 			wantErr: "window change channel must be set",
+		},
+		{
+			name:    "blank exec command",
+			server:  validServer,
+			channel: validChannel,
+			winCh:   validWinCh,
+			execCmd: " \t ",
+			vm:      validVM,
+			wantErr: "exec command must be set",
 		},
 		{
 			name:    "blank guest IP",
 			server:  validServer,
 			channel: validChannel,
 			winCh:   validWinCh,
+			shell:   true,
 			vm:      &firecracker.VM{GuestIP: " \t "},
 			wantErr: "guest IP must be set",
 		},
@@ -620,6 +637,7 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			server:  &Server{cfg: &config.Config{GuestUser: " \t ", GuestKeyPath: "/keys/guest"}},
 			channel: validChannel,
 			winCh:   validWinCh,
+			shell:   true,
 			vm:      validVM,
 			wantErr: "guest user must be set",
 		},
@@ -628,6 +646,7 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 			server:  &Server{cfg: &config.Config{GuestUser: "root", GuestKeyPath: " \t "}},
 			channel: validChannel,
 			winCh:   validWinCh,
+			shell:   true,
 			vm:      validVM,
 			wantErr: "guest key path must be set",
 		},
@@ -635,7 +654,7 @@ func TestProxyToGuestRejectsInvalidState(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.server.proxyToGuest(tt.channel, nil, tt.winCh, true, "", tt.vm)
+			err := tt.server.proxyToGuest(tt.channel, nil, tt.winCh, tt.shell, tt.execCmd, tt.vm)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("proxyToGuest error = %v, want containing %q", err, tt.wantErr)
 			}

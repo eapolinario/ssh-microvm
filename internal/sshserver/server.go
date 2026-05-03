@@ -498,6 +498,9 @@ func (s *Server) proxyToGuest(ch ssh.Channel, ptyReq *ptyRequest, winCh <-chan w
 	if err := validateWindowChanges(winCh); err != nil {
 		return err
 	}
+	if err := validateGuestCommand(shell, execCmd); err != nil {
+		return err
+	}
 	if err := s.validateGuestDial(vm.GuestIP); err != nil {
 		return err
 	}
@@ -539,10 +542,6 @@ func (s *Server) proxyToGuest(ch ssh.Channel, ptyReq *ptyRequest, winCh <-chan w
 		}
 		return session.Wait()
 	}
-
-	if execCmd == "" {
-		execCmd = "bash"
-	}
 	return session.Run(execCmd)
 }
 
@@ -565,6 +564,16 @@ func (s *Server) validateGuestProxy(ch ssh.Channel, vm *firecracker.VM) error {
 func validateWindowChanges(winCh <-chan windowChange) error {
 	if winCh == nil {
 		return errors.New("window change channel must be set")
+	}
+	return nil
+}
+
+func validateGuestCommand(shell bool, execCmd string) error {
+	if shell {
+		return nil
+	}
+	if strings.TrimSpace(execCmd) == "" {
+		return errors.New("exec command must be set")
 	}
 	return nil
 }
