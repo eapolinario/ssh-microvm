@@ -109,41 +109,90 @@ func TestLoadFromArgsDerivesBlankOptionalPaths(t *testing.T) {
 	assertConfigValue(t, "HostKeyPath", cfg.HostKeyPath, filepath.Join(stateDir, "ssh_host_ed25519"))
 }
 
-func TestLoadFromArgsTrimsStringOverrides(t *testing.T) {
-	stateDir := t.TempDir()
-
-	cfg, err := loadFromArgs([]string{
-		"--listen", " 127.0.0.1:2200 ",
-		"--state-dir", " " + stateDir + " ",
-		"--db-path", " " + filepath.Join(stateDir, "custom.sqlite") + " ",
-		"--host-key", " " + filepath.Join(stateDir, "host_key") + " ",
-		"--auth-mode", " " + AuthModeKnownKeys + " ",
-		"--firecracker", " /bin/firecracker ",
-		"--kernel", " /images/kernel ",
-		"--rootfs", " /images/rootfs ",
-		"--guest-user", " ubuntu ",
-		"--guest-key", " /keys/guest ",
-		"--guest-ip", " 10.0.0.2 ",
-		"--host-ip", " 10.0.0.1 ",
-		"--tap-prefix", " vm ",
-	}, flag.ContinueOnError)
-	if err != nil {
-		t.Fatalf("loadFromArgs: %v", err)
+func TestLoadFromArgsRejectsPaddedStringOverrides(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "padded listen address",
+			args:    requiredArgs("--listen", " 127.0.0.1:2200 "),
+			wantErr: "--listen must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded state dir",
+			args:    requiredArgs("--state-dir", " /state "),
+			wantErr: "--state-dir must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded db path",
+			args:    requiredArgs("--db-path", " /db/custom.sqlite "),
+			wantErr: "--db-path must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded host key",
+			args:    requiredArgs("--host-key", " /keys/host "),
+			wantErr: "--host-key must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded auth mode",
+			args:    requiredArgs("--auth-mode", " "+AuthModeKnownKeys+" "),
+			wantErr: "--auth-mode must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded firecracker binary",
+			args:    requiredArgs("--firecracker", " /bin/firecracker "),
+			wantErr: "--firecracker must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded kernel",
+			args:    requiredArgs("--kernel", " /images/kernel "),
+			wantErr: "--kernel must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded rootfs",
+			args:    requiredArgs("--rootfs", " /images/rootfs "),
+			wantErr: "--rootfs must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded guest user",
+			args:    requiredArgs("--guest-user", " ubuntu "),
+			wantErr: "--guest-user must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded guest key",
+			args:    requiredArgs("--guest-key", " /keys/guest "),
+			wantErr: "--guest-key must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded guest ip",
+			args:    requiredArgs("--guest-ip", " 10.0.0.2 "),
+			wantErr: "--guest-ip must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded host ip",
+			args:    requiredArgs("--host-ip", " 10.0.0.1 "),
+			wantErr: "--host-ip must not contain surrounding whitespace",
+		},
+		{
+			name:    "padded tap prefix",
+			args:    requiredArgs("--tap-prefix", " vm "),
+			wantErr: "--tap-prefix must not contain surrounding whitespace",
+		},
 	}
 
-	assertConfigValue(t, "ListenAddr", cfg.ListenAddr, "127.0.0.1:2200")
-	assertConfigValue(t, "StateDir", cfg.StateDir, stateDir)
-	assertConfigValue(t, "DBPath", cfg.DBPath, filepath.Join(stateDir, "custom.sqlite"))
-	assertConfigValue(t, "HostKeyPath", cfg.HostKeyPath, filepath.Join(stateDir, "host_key"))
-	assertConfigValue(t, "AuthMode", cfg.AuthMode, AuthModeKnownKeys)
-	assertConfigValue(t, "Firecracker", cfg.Firecracker, "/bin/firecracker")
-	assertConfigValue(t, "KernelImage", cfg.KernelImage, "/images/kernel")
-	assertConfigValue(t, "RootFS", cfg.RootFS, "/images/rootfs")
-	assertConfigValue(t, "GuestUser", cfg.GuestUser, "ubuntu")
-	assertConfigValue(t, "GuestKeyPath", cfg.GuestKeyPath, "/keys/guest")
-	assertConfigValue(t, "GuestIP", cfg.GuestIP, "10.0.0.2")
-	assertConfigValue(t, "HostIP", cfg.HostIP, "10.0.0.1")
-	assertConfigValue(t, "TapPrefix", cfg.TapPrefix, "vm")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := loadFromArgs(tt.args, flag.ContinueOnError)
+			if err == nil {
+				t.Fatalf("loadFromArgs succeeded, want error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("loadFromArgs error = %q, want to contain %q", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func TestLoadFromArgsValidation(t *testing.T) {

@@ -75,16 +75,25 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if err := fs.Parse(args); err != nil {
 		return nil, err
 	}
-	normalizeStringFields(cfg)
 
 	if isBlank(cfg.StateDir) {
 		return nil, errors.New("--state-dir must be set")
 	}
+	if hasSurroundingWhitespace(cfg.StateDir) {
+		return nil, errors.New("--state-dir must not contain surrounding whitespace")
+	}
 	if isBlank(cfg.DBPath) {
 		cfg.DBPath = filepath.Join(cfg.StateDir, "db.sqlite")
+	} else if hasSurroundingWhitespace(cfg.DBPath) {
+		return nil, errors.New("--db-path must not contain surrounding whitespace")
 	}
 	if isBlank(cfg.HostKeyPath) {
 		cfg.HostKeyPath = filepath.Join(cfg.StateDir, "ssh_host_ed25519")
+	} else if hasSurroundingWhitespace(cfg.HostKeyPath) {
+		return nil, errors.New("--host-key must not contain surrounding whitespace")
+	}
+	if hasSurroundingWhitespace(cfg.ListenAddr) {
+		return nil, errors.New("--listen must not contain surrounding whitespace")
 	}
 	if err := validateListenAddr(cfg.ListenAddr); err != nil {
 		return nil, err
@@ -92,14 +101,26 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if isBlank(cfg.KernelImage) {
 		return nil, errors.New("--kernel is required")
 	}
+	if hasSurroundingWhitespace(cfg.KernelImage) {
+		return nil, errors.New("--kernel must not contain surrounding whitespace")
+	}
 	if isBlank(cfg.RootFS) {
 		return nil, errors.New("--rootfs is required")
+	}
+	if hasSurroundingWhitespace(cfg.RootFS) {
+		return nil, errors.New("--rootfs must not contain surrounding whitespace")
+	}
+	if hasSurroundingWhitespace(cfg.AuthMode) {
+		return nil, errors.New("--auth-mode must not contain surrounding whitespace")
 	}
 	if cfg.AuthMode != AuthModeAutoEnroll && cfg.AuthMode != AuthModeKnownKeys {
 		return nil, fmt.Errorf("invalid --auth-mode: %s", cfg.AuthMode)
 	}
 	if isBlank(cfg.Firecracker) {
 		return nil, errors.New("--firecracker must be set")
+	}
+	if hasSurroundingWhitespace(cfg.Firecracker) {
+		return nil, errors.New("--firecracker must not contain surrounding whitespace")
 	}
 	if cfg.VCPUCount <= 0 {
 		return nil, errors.New("--vcpu must be > 0")
@@ -113,11 +134,23 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if isBlank(cfg.GuestUser) {
 		return nil, errors.New("--guest-user must be set")
 	}
+	if hasSurroundingWhitespace(cfg.GuestUser) {
+		return nil, errors.New("--guest-user must not contain surrounding whitespace")
+	}
 	if isBlank(cfg.GuestKeyPath) {
 		return nil, errors.New("--guest-key must be set")
 	}
+	if hasSurroundingWhitespace(cfg.GuestKeyPath) {
+		return nil, errors.New("--guest-key must not contain surrounding whitespace")
+	}
 	if isBlank(cfg.GuestIP) || isBlank(cfg.HostIP) {
 		return nil, errors.New("--guest-ip and --host-ip must be set")
+	}
+	if hasSurroundingWhitespace(cfg.GuestIP) {
+		return nil, errors.New("--guest-ip must not contain surrounding whitespace")
+	}
+	if hasSurroundingWhitespace(cfg.HostIP) {
+		return nil, errors.New("--host-ip must not contain surrounding whitespace")
 	}
 	if !isIPv4(cfg.GuestIP) {
 		return nil, fmt.Errorf("--guest-ip must be a valid IPv4 address: %s", cfg.GuestIP)
@@ -131,6 +164,9 @@ func loadFromArgs(args []string, errorHandling flag.ErrorHandling) (*Config, err
 	if !sameIPv4Slash24(cfg.GuestIP, cfg.HostIP) {
 		return nil, errors.New("--guest-ip and --host-ip must be in the same /24 network")
 	}
+	if !isBlank(cfg.TapPrefix) && hasSurroundingWhitespace(cfg.TapPrefix) {
+		return nil, errors.New("--tap-prefix must not contain surrounding whitespace")
+	}
 	if err := validateTapPrefix(cfg.TapPrefix); err != nil {
 		return nil, err
 	}
@@ -142,20 +178,8 @@ func isBlank(value string) bool {
 	return strings.TrimSpace(value) == ""
 }
 
-func normalizeStringFields(cfg *Config) {
-	cfg.ListenAddr = strings.TrimSpace(cfg.ListenAddr)
-	cfg.StateDir = strings.TrimSpace(cfg.StateDir)
-	cfg.DBPath = strings.TrimSpace(cfg.DBPath)
-	cfg.HostKeyPath = strings.TrimSpace(cfg.HostKeyPath)
-	cfg.AuthMode = strings.TrimSpace(cfg.AuthMode)
-	cfg.Firecracker = strings.TrimSpace(cfg.Firecracker)
-	cfg.KernelImage = strings.TrimSpace(cfg.KernelImage)
-	cfg.RootFS = strings.TrimSpace(cfg.RootFS)
-	cfg.GuestUser = strings.TrimSpace(cfg.GuestUser)
-	cfg.GuestKeyPath = strings.TrimSpace(cfg.GuestKeyPath)
-	cfg.GuestIP = strings.TrimSpace(cfg.GuestIP)
-	cfg.HostIP = strings.TrimSpace(cfg.HostIP)
-	cfg.TapPrefix = strings.TrimSpace(cfg.TapPrefix)
+func hasSurroundingWhitespace(value string) bool {
+	return value != strings.TrimSpace(value)
 }
 
 func isIPv4(value string) bool {
