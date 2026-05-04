@@ -18,6 +18,7 @@ use tokio::net::TcpListener;
 use crate::{
     config::Config,
     lifecycle::{VmLease, VmLifecycle},
+    proxy::{ExecProxy, GuestSshProxy},
 };
 
 #[derive(Clone, Debug)]
@@ -38,6 +39,7 @@ impl ClientAuth {
 struct SshServer {
     auth: ClientAuth,
     lifecycle: VmLifecycle,
+    proxy: Arc<dyn ExecProxy>,
 }
 
 impl server::Server for SshServer {
@@ -48,6 +50,7 @@ impl server::Server for SshServer {
         SshSession {
             auth: self.auth.clone(),
             lifecycle: self.lifecycle.clone(),
+            proxy: self.proxy.clone(),
             vm_lease: None,
         }
     }
@@ -60,6 +63,7 @@ impl server::Server for SshServer {
 struct SshSession {
     auth: ClientAuth,
     lifecycle: VmLifecycle,
+    proxy: Arc<dyn ExecProxy>,
     vm_lease: Option<VmLease>,
 }
 
@@ -101,12 +105,26 @@ impl server::Handler for SshSession {
     async fn exec_request(
         &mut self,
         channel: ChannelId,
-        _data: &[u8],
+        data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        let output = match self.proxy.exec(data.to_vec()).await {
+            Ok(output) => output,
+            Err(err) => {
+                session.channel_failure(channel)?;
+                session.close(channel)?;
+                return Err(err.context("proxy guest SSH exec"));
+            }
+        };
+
         session.channel_success(channel)?;
-        session.data(channel, "ok\n")?;
-        session.exit_status_request(channel, 0)?;
+        if !output.stdout.is_empty() {
+            session.data(channel, output.stdout)?;
+        }
+        if !output.stderr.is_empty() {
+            session.extended_data(channel, 1, output.stderr)?;
+        }
+        session.exit_status_request(channel, output.exit_status)?;
         session.eof(channel)?;
         session.close(channel)?;
         Ok(())
@@ -125,11 +143,16 @@ pub async fn run(cfg: &Config) -> Result<()> {
     let host_key = load_or_generate_host_key(&cfg.host_key_path())?;
     let auth = load_client_auth(cfg)?;
     let lifecycle = VmLifecycle::new(cfg);
+    let proxy = Arc::new(GuestSshProxy::new(cfg));
     let server_config = Arc::new(server_config(host_key));
     let listener = TcpListener::bind(cfg.listen)
         .await
         .with_context(|| format!("bind SSH listener on {}", cfg.listen))?;
-    let mut server = SshServer { auth, lifecycle };
+    let mut server = SshServer {
+        auth,
+        lifecycle,
+        proxy,
+    };
 
     tracing::info!(listen = %cfg.listen, "ssh server listening");
     server.run_on_socket(server_config, &listener).await?;
@@ -230,7 +253,10 @@ mod tests {
     };
     use tokio::{sync::Notify, time::timeout};
 
-    use crate::lifecycle::{BoxFuture, RunningVm, VmLifecycle, VmSpawner};
+    use crate::{
+        lifecycle::{BoxFuture, RunningVm, VmLifecycle, VmSpawner},
+        proxy::ExecOutput,
+    };
 
     use super::*;
 
@@ -342,6 +368,7 @@ mod tests {
         let mut server = SshServer {
             auth: ClientAuth::AcceptAnyKey,
             lifecycle,
+            proxy: Arc::new(TestProxy),
         };
 
         let server_task = tokio::spawn(async move {
@@ -376,7 +403,10 @@ mod tests {
             .channel_open_session()
             .await
             .expect("open session channel");
-        channel.exec(true, "ignored").await.expect("exec request");
+        channel
+            .exec(true, "echo through guest")
+            .await
+            .expect("exec request");
 
         let mut stdout = Vec::new();
         let mut exit_status = None;
@@ -389,8 +419,8 @@ mod tests {
             }
         }
 
-        assert_eq!(stdout, b"ok\n");
-        assert_eq!(exit_status, Some(0));
+        assert_eq!(stdout, b"proxied: echo through guest\n");
+        assert_eq!(exit_status, Some(3));
         assert_eq!(vm_spawner.boots.load(Ordering::SeqCst), 1);
 
         session
@@ -414,6 +444,21 @@ mod tests {
 
         async fn check_server_key(&mut self, _server_public_key: &PublicKey) -> Result<bool> {
             Ok(true)
+        }
+    }
+
+    struct TestProxy;
+
+    impl ExecProxy for TestProxy {
+        fn exec(&self, command: Vec<u8>) -> BoxFuture<Result<ExecOutput>> {
+            Box::pin(async move {
+                Ok(ExecOutput {
+                    stdout: format!("proxied: {}\n", String::from_utf8_lossy(&command))
+                        .into_bytes(),
+                    stderr: Vec::new(),
+                    exit_status: 3,
+                })
+            })
         }
     }
 

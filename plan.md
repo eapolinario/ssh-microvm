@@ -33,7 +33,7 @@ microVM, waits for guest sshd, and bidirectionally proxies the SSH session
       exec to validate the SSH stack.
 - [x] **6. VM lifecycle on connection** — global `tokio::sync::Mutex`; boot
       VM lazily on first channel open; shut down on disconnect.
-- [ ] **7. Inner SSH client + proxy** (`src/proxy.rs`) — russh client dials
+- [x] **7. Inner SSH client + proxy** (`src/proxy.rs`) — russh client dials
       `guest_ip:22` with `--guest-key`; proxy `exec` end-to-end.
 - [ ] **8. PTY / shell / window-change** — full interactive proxy.
 - [ ] **9. Smoke integration test** — gated by `SSH_MICROVM_KERNEL`,
