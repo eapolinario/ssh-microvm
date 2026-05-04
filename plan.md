@@ -31,7 +31,7 @@ microVM, waits for guest sshd, and bidirectionally proxies the SSH session
       load (auto-generate if missing), public-key auth against
       `--authorized-keys` or `--accept-any-key`. No VM yet; reply "ok" to
       exec to validate the SSH stack.
-- [ ] **6. VM lifecycle on connection** — global `tokio::sync::Mutex`; boot
+- [x] **6. VM lifecycle on connection** — global `tokio::sync::Mutex`; boot
       VM lazily on first channel open; shut down on disconnect.
 - [ ] **7. Inner SSH client + proxy** (`src/proxy.rs`) — russh client dials
       `guest_ip:22` with `--guest-key`; proxy `exec` end-to-end.

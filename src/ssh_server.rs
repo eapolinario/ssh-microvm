@@ -15,7 +15,10 @@ use russh::{
 };
 use tokio::net::TcpListener;
 
-use crate::config::Config;
+use crate::{
+    config::Config,
+    lifecycle::{VmLease, VmLifecycle},
+};
 
 #[derive(Clone, Debug)]
 enum ClientAuth {
@@ -32,9 +35,9 @@ impl ClientAuth {
     }
 }
 
-#[derive(Clone, Debug)]
 struct SshServer {
     auth: ClientAuth,
+    lifecycle: VmLifecycle,
 }
 
 impl server::Server for SshServer {
@@ -44,6 +47,8 @@ impl server::Server for SshServer {
         tracing::debug!(?peer_addr, "accepted ssh client");
         SshSession {
             auth: self.auth.clone(),
+            lifecycle: self.lifecycle.clone(),
+            vm_lease: None,
         }
     }
 
@@ -52,9 +57,10 @@ impl server::Server for SshServer {
     }
 }
 
-#[derive(Clone, Debug)]
 struct SshSession {
     auth: ClientAuth,
+    lifecycle: VmLifecycle,
+    vm_lease: Option<VmLease>,
 }
 
 impl server::Handler for SshSession {
@@ -81,6 +87,14 @@ impl server::Handler for SshSession {
         _channel: Channel<Msg>,
         _session: &mut Session,
     ) -> Result<bool, Self::Error> {
+        if self.vm_lease.is_none() {
+            self.vm_lease = Some(
+                self.lifecycle
+                    .acquire()
+                    .await
+                    .context("boot VM for SSH session channel")?,
+            );
+        }
         Ok(true)
     }
 
@@ -110,11 +124,12 @@ fn auth_result(accepted: bool) -> Auth {
 pub async fn run(cfg: &Config) -> Result<()> {
     let host_key = load_or_generate_host_key(&cfg.host_key_path())?;
     let auth = load_client_auth(cfg)?;
+    let lifecycle = VmLifecycle::new(cfg);
     let server_config = Arc::new(server_config(host_key));
     let listener = TcpListener::bind(cfg.listen)
         .await
         .with_context(|| format!("bind SSH listener on {}", cfg.listen))?;
-    let mut server = SshServer { auth };
+    let mut server = SshServer { auth, lifecycle };
 
     tracing::info!(listen = %cfg.listen, "ssh server listening");
     server.run_on_socket(server_config, &listener).await?;
@@ -201,7 +216,10 @@ mod tests {
         fs,
         net::{IpAddr, Ipv4Addr, SocketAddr},
         path::PathBuf,
-        sync::Arc,
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
         time::Duration,
     };
 
@@ -210,6 +228,9 @@ mod tests {
         client::{self, Handler},
         keys::PrivateKeyWithHashAlg,
     };
+    use tokio::{sync::Notify, time::timeout};
+
+    use crate::lifecycle::{BoxFuture, RunningVm, VmLifecycle, VmSpawner};
 
     use super::*;
 
@@ -315,8 +336,12 @@ mod tests {
             .expect("bind test server");
         let addr = listener.local_addr().expect("listener addr");
         let server_config = Arc::new(server_config(host_key));
+        let cfg = test_config();
+        let vm_spawner = Arc::new(TestVmSpawner::default());
+        let lifecycle = VmLifecycle::new_with_spawner(&cfg, vm_spawner.clone());
         let mut server = SshServer {
             auth: ClientAuth::AcceptAnyKey,
+            lifecycle,
         };
 
         let server_task = tokio::spawn(async move {
@@ -366,12 +391,20 @@ mod tests {
 
         assert_eq!(stdout, b"ok\n");
         assert_eq!(exit_status, Some(0));
+        assert_eq!(vm_spawner.boots.load(Ordering::SeqCst), 1);
 
         session
             .disconnect(Disconnect::ByApplication, "", "en")
             .await
             .expect("disconnect");
         server_task.await.expect("server task");
+        timeout(
+            Duration::from_secs(1),
+            vm_spawner.shutdown_notify.notified(),
+        )
+        .await
+        .expect("disconnect should shut down the VM lease");
+        assert_eq!(vm_spawner.shutdowns.load(Ordering::SeqCst), 1);
     }
 
     struct TestClient;
@@ -381,6 +414,42 @@ mod tests {
 
         async fn check_server_key(&mut self, _server_public_key: &PublicKey) -> Result<bool> {
             Ok(true)
+        }
+    }
+
+    #[derive(Default)]
+    struct TestVmSpawner {
+        boots: AtomicUsize,
+        shutdowns: Arc<AtomicUsize>,
+        shutdown_notify: Arc<Notify>,
+    }
+
+    impl VmSpawner for TestVmSpawner {
+        fn boot(&self, _cfg: Config) -> BoxFuture<Result<Box<dyn RunningVm>>> {
+            self.boots.fetch_add(1, Ordering::SeqCst);
+            let shutdowns = self.shutdowns.clone();
+            let shutdown_notify = self.shutdown_notify.clone();
+            Box::pin(async move {
+                Ok(Box::new(TestVm {
+                    shutdowns,
+                    shutdown_notify,
+                }) as Box<dyn RunningVm>)
+            })
+        }
+    }
+
+    struct TestVm {
+        shutdowns: Arc<AtomicUsize>,
+        shutdown_notify: Arc<Notify>,
+    }
+
+    impl RunningVm for TestVm {
+        fn shutdown(self: Box<Self>) -> BoxFuture<Result<()>> {
+            Box::pin(async move {
+                self.shutdowns.fetch_add(1, Ordering::SeqCst);
+                self.shutdown_notify.notify_one();
+                Ok(())
+            })
         }
     }
 }

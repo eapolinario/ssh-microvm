@@ -8,7 +8,7 @@ use std::{
 
 use clap::{ArgGroup, Parser, Subcommand};
 
-#[derive(Debug, Parser)]
+#[derive(Debug, Clone, Parser)]
 #[command(name = "ssh-microvm", version, about)]
 #[command(group(
     ArgGroup::new("auth")
