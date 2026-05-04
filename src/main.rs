@@ -1,13 +1,15 @@
 //! ssh-microvm entrypoint.
 //!
-//! For now the server path is a stub. The dry-boot path exercises the
-//! Firecracker boot sequence used by later lifecycle code.
+//! The dry-boot path exercises the Firecracker boot sequence used by later
+//! lifecycle code; the server path accepts SSH connections and validates the
+//! outer SSH stack.
 
 use anyhow::Result;
 use clap::Parser;
 use ssh_microvm::{
     boot,
     config::{Config, RunMode},
+    ssh_server,
 };
 
 #[tokio::main]
@@ -25,7 +27,7 @@ async fn main() -> Result<()> {
 
     match cfg.run_mode() {
         RunMode::BootOnce => boot::dry_boot(&cfg).await?,
-        RunMode::Server => println!("ssh-microvm: skeleton server; nothing wired yet."),
+        RunMode::Server => ssh_server::run(&cfg).await?,
     }
 
     Ok(())

@@ -27,7 +27,7 @@ microVM, waits for guest sshd, and bidirectionally proxies the SSH session
       waits for guest sshd:22, and exits cleanly on Ctrl-C.
 - [x] **4. VmHandle** (`src/firecracker.rs`) — `boot()` + `shutdown()` with
       SendCtrlAltDel → grace → SIGKILL → state-dir cleanup.
-- [ ] **5. Outer SSH server** (`src/ssh_server.rs`) — russh server, host-key
+- [x] **5. Outer SSH server** (`src/ssh_server.rs`) — russh server, host-key
       load (auto-generate if missing), public-key auth against
       `--authorized-keys` or `--accept-any-key`. No VM yet; reply "ok" to
       exec to validate the SSH stack.
