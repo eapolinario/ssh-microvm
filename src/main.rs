@@ -6,8 +6,7 @@
 
 use anyhow::Result;
 use clap::Parser;
-
-mod config;
+use ssh_microvm::config;
 
 #[tokio::main]
 async fn main() -> Result<()> {
