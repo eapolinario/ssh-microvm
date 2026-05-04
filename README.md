@@ -66,6 +66,7 @@ Configured via flags:
 
 | Flag | Default | Notes |
 | --- | --- | --- |
+| `--dry-boot` | `false` | Boot one VM, wait for guest sshd, then tear it down |
 | `--listen` | `0.0.0.0:2222` | SSH listen address |
 | `--kernel` | _(required)_ | Path to `vmlinux.bin` |
 | `--rootfs` | _(required)_ | Path to ext4 rootfs |
@@ -95,6 +96,7 @@ just check              # cargo check --all-targets
 just test               # cargo test
 just fetch-ubuntu       # download + assemble Ubuntu rootfs
 just tap-up / tap-down  # manage tap0 / 172.16.0.1
+ssh-microvm --dry-boot ... # boot one VM and verify guest sshd readiness
 just ssh-local          # ssh into the running server
 ```
 

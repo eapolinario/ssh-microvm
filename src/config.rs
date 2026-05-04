@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use clap::{ArgGroup, Parser};
+use clap::{ArgGroup, Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(name = "ssh-microvm", version, about)]
@@ -17,6 +17,13 @@ use clap::{ArgGroup, Parser};
         .args(["authorized_keys", "accept_any_key"])
 ))]
 pub struct Config {
+    /// Boot one Firecracker microVM, wait for guest sshd, then tear it down.
+    #[arg(long)]
+    pub dry_boot: bool,
+
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// SSH listen address for incoming client connections.
     #[arg(long, default_value = "0.0.0.0:2222")]
     pub listen: SocketAddr,
@@ -90,11 +97,47 @@ pub struct Config {
     pub grace_stop: Duration,
 }
 
+#[derive(Debug, Clone, Subcommand, PartialEq, Eq)]
+pub enum Command {
+    /// MicroVM lifecycle commands.
+    Microvm {
+        #[command(subcommand)]
+        command: MicrovmCommand,
+    },
+}
+
+#[derive(Debug, Clone, Subcommand, PartialEq, Eq)]
+pub enum MicrovmCommand {
+    /// Boot one Firecracker microVM and wait for guest sshd.
+    Boot,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RunMode {
+    Server,
+    BootOnce,
+}
+
 impl Config {
     pub fn host_key_path(&self) -> PathBuf {
         self.host_key
             .clone()
             .unwrap_or_else(|| self.state_dir.join("ssh_host_ed25519"))
+    }
+
+    pub fn run_mode(&self) -> RunMode {
+        if self.dry_boot
+            || matches!(
+                self.command,
+                Some(Command::Microvm {
+                    command: MicrovmCommand::Boot,
+                })
+            )
+        {
+            RunMode::BootOnce
+        } else {
+            RunMode::Server
+        }
     }
 }
 
@@ -149,6 +192,7 @@ mod tests {
         let cfg = Config::try_parse_from(base_args()).expect("valid config");
 
         assert_eq!(cfg.listen, "0.0.0.0:2222".parse().unwrap());
+        assert_eq!(cfg.run_mode(), RunMode::Server);
         assert_eq!(cfg.kernel, PathBuf::from("artifacts/vmlinux.bin"));
         assert_eq!(cfg.rootfs, PathBuf::from("artifacts/ubuntu.ext4"));
         assert_eq!(cfg.state_dir, PathBuf::from("/tmp/ssh-microvm"));
@@ -256,6 +300,7 @@ mod tests {
 
         for flag in [
             "--listen",
+            "--dry-boot",
             "--kernel",
             "--rootfs",
             "--state-dir",
@@ -276,6 +321,26 @@ mod tests {
         ] {
             assert!(help.contains(flag), "help should document {flag}");
         }
+    }
+
+    #[test]
+    fn dry_boot_flag_selects_boot_once_mode() {
+        let mut args = base_args();
+        args.push("--dry-boot");
+
+        let cfg = Config::try_parse_from(args).expect("valid dry boot config");
+
+        assert_eq!(cfg.run_mode(), RunMode::BootOnce);
+    }
+
+    #[test]
+    fn microvm_boot_subcommand_selects_boot_once_mode() {
+        let mut args = base_args();
+        args.extend(["microvm", "boot"]);
+
+        let cfg = Config::try_parse_from(args).expect("valid microvm boot config");
+
+        assert_eq!(cfg.run_mode(), RunMode::BootOnce);
     }
 
     #[test]

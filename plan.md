@@ -21,7 +21,7 @@ microVM, waits for guest sshd, and bidirectionally proxies the SSH session
       LICENSE (Apache-2.0), `src/main.rs` + `src/config.rs` stubs.
 - [x] **2. Config + CLI** — full `Config` struct via clap derive; `--help`
       output documents every flag; `cargo run -- --help` works.
-- [ ] **3. Firecracker UDS HTTP client** (`src/api.rs`) — hand-rolled PUT/GET
+- [x] **3. Firecracker UDS HTTP client** (`src/api.rs`) — hand-rolled PUT/GET
       over `tokio::net::UnixStream`. Plus `--dry-boot` / `microvm boot`
       subcommand that spawns Firecracker, configures it, starts the VM,
       waits for guest sshd:22, and exits cleanly on Ctrl-C.
