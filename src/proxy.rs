@@ -4,7 +4,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use anyhow::{Context, Result, anyhow};
 use russh::{
-    ChannelMsg, Disconnect, client,
+    ChannelMsg, Disconnect, Pty, client,
     keys::{PrivateKeyWithHashAlg, PublicKey, load_secret_key},
 };
 
@@ -16,8 +16,44 @@ pub(crate) struct ExecOutput {
     pub exit_status: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TerminalSize {
+    pub col_width: u32,
+    pub row_height: u32,
+    pub pix_width: u32,
+    pub pix_height: u32,
+}
+
+impl TerminalSize {
+    pub(crate) fn new(col_width: u32, row_height: u32, pix_width: u32, pix_height: u32) -> Self {
+        Self {
+            col_width,
+            row_height,
+            pix_width,
+            pix_height,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PtyRequest {
+    pub term: String,
+    pub size: TerminalSize,
+    pub modes: Vec<(Pty, u32)>,
+}
+
+impl PtyRequest {
+    pub(crate) fn new(term: String, size: TerminalSize, modes: Vec<(Pty, u32)>) -> Self {
+        Self { term, size, modes }
+    }
+
+    pub(crate) fn resize(&mut self, size: TerminalSize) {
+        self.size = size;
+    }
+}
+
 pub(crate) trait ExecProxy: Send + Sync + 'static {
-    fn exec(&self, command: Vec<u8>) -> BoxFuture<Result<ExecOutput>>;
+    fn exec(&self, command: Vec<u8>, pty: Option<PtyRequest>) -> BoxFuture<Result<ExecOutput>>;
 }
 
 #[derive(Clone)]
@@ -40,7 +76,7 @@ impl GuestSshProxy {
 }
 
 impl ExecProxy for GuestSshProxy {
-    fn exec(&self, command: Vec<u8>) -> BoxFuture<Result<ExecOutput>> {
+    fn exec(&self, command: Vec<u8>, pty: Option<PtyRequest>) -> BoxFuture<Result<ExecOutput>> {
         let cfg = self.cfg.clone();
         let addr = self.addr;
 
@@ -74,6 +110,20 @@ impl ExecProxy for GuestSshProxy {
                 .channel_open_session()
                 .await
                 .context("open guest SSH session channel")?;
+            if let Some(pty) = pty {
+                channel
+                    .request_pty(
+                        true,
+                        &pty.term,
+                        pty.size.col_width,
+                        pty.size.row_height,
+                        pty.size.pix_width,
+                        pty.size.pix_height,
+                        &pty.modes,
+                    )
+                    .await
+                    .context("send guest SSH pty request")?;
+            }
             channel
                 .exec(true, command)
                 .await
@@ -169,11 +219,62 @@ mod tests {
         let proxy = GuestSshProxy::new_with_addr(&cfg, addr);
 
         let output = proxy
-            .exec(b"echo hello".to_vec())
+            .exec(b"echo hello".to_vec(), None)
             .await
             .expect("proxy exec");
 
         assert_eq!(output.stdout, b"ran: echo hello\n");
+        assert_eq!(output.stderr, b"warn\n");
+        assert_eq!(output.exit_status, 7);
+        server_task.await.expect("server task");
+        fs::remove_dir_all(key_path.parent().unwrap()).expect("remove key dir");
+    }
+
+    #[tokio::test]
+    async fn guest_proxy_requests_pty_before_exec_when_provided() {
+        let client_key =
+            PrivateKey::random(&mut safe_rng(), Algorithm::Ed25519).expect("client key");
+        let host_key = PrivateKey::random(&mut safe_rng(), Algorithm::Ed25519).expect("host key");
+        let key_path = write_test_key(&client_key);
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let addr = listener.local_addr().expect("local addr");
+        let server_config = Arc::new(server::Config {
+            keys: vec![host_key],
+            methods: MethodSet::from(&[MethodKind::PublicKey][..]),
+            auth_rejection_time_initial: Some(Duration::from_millis(0)),
+            ..Default::default()
+        });
+        let mut server = InnerServer {
+            accepted: client_key.public_key().clone(),
+        };
+
+        let server_task = tokio::spawn(async move {
+            let (socket, peer_addr) = listener.accept().await.expect("accept");
+            let handler = server.new_client(Some(peer_addr));
+            server::run_stream(server_config, socket, handler)
+                .await
+                .expect("run inner ssh server");
+        });
+
+        let mut cfg = test_config();
+        cfg.guest_key = key_path.clone();
+        cfg.guest_user = "guest".to_string();
+        let proxy = GuestSshProxy::new_with_addr(&cfg, addr);
+        let pty = PtyRequest::new(
+            "xterm-256color".to_string(),
+            TerminalSize::new(120, 40, 800, 600),
+            vec![(Pty::ECHO, 1)],
+        );
+
+        let output = proxy
+            .exec(b"echo hello".to_vec(), Some(pty))
+            .await
+            .expect("proxy exec");
+
+        assert_eq!(
+            output.stdout,
+            b"pty xterm-256color 120 40 800 600\nran: echo hello\n"
+        );
         assert_eq!(output.stderr, b"warn\n");
         assert_eq!(output.exit_status, 7);
         server_task.await.expect("server task");
@@ -190,12 +291,14 @@ mod tests {
         fn new_client(&mut self, _peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
             InnerSession {
                 accepted: self.accepted.clone(),
+                pty: None,
             }
         }
     }
 
     struct InnerSession {
         accepted: PublicKey,
+        pty: Option<PtyRequest>,
     }
 
     impl server::Handler for InnerSession {
@@ -233,6 +336,26 @@ mod tests {
             Ok(true)
         }
 
+        async fn pty_request(
+            &mut self,
+            channel: ChannelId,
+            term: &str,
+            col_width: u32,
+            row_height: u32,
+            pix_width: u32,
+            pix_height: u32,
+            modes: &[(Pty, u32)],
+            session: &mut Session,
+        ) -> Result<(), Self::Error> {
+            self.pty = Some(PtyRequest::new(
+                term.to_string(),
+                TerminalSize::new(col_width, row_height, pix_width, pix_height),
+                modes.to_vec(),
+            ));
+            session.channel_success(channel)?;
+            Ok(())
+        }
+
         async fn exec_request(
             &mut self,
             channel: ChannelId,
@@ -240,6 +363,19 @@ mod tests {
             session: &mut Session,
         ) -> Result<(), Self::Error> {
             session.channel_success(channel)?;
+            if let Some(pty) = &self.pty {
+                session.data(
+                    channel,
+                    format!(
+                        "pty {} {} {} {} {}\n",
+                        pty.term,
+                        pty.size.col_width,
+                        pty.size.row_height,
+                        pty.size.pix_width,
+                        pty.size.pix_height
+                    ),
+                )?;
+            }
             session.data(channel, format!("ran: {}\n", String::from_utf8_lossy(data)))?;
             session.extended_data(channel, 1, "warn\n")?;
             session.exit_status_request(channel, 7)?;

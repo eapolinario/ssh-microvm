@@ -1,10 +1,10 @@
 //! Outer SSH server.
 
-use std::{path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
 use anyhow::{Context, Result, anyhow};
 use russh::{
-    Channel, ChannelId, MethodKind, MethodSet,
+    Channel, ChannelId, MethodKind, MethodSet, Pty,
     keys::{
         Algorithm, PrivateKey, PublicKey,
         key::safe_rng,
@@ -18,7 +18,7 @@ use tokio::net::TcpListener;
 use crate::{
     config::Config,
     lifecycle::{VmLease, VmLifecycle},
-    proxy::{ExecProxy, GuestSshProxy},
+    proxy::{ExecProxy, GuestSshProxy, PtyRequest, TerminalSize},
 };
 
 #[derive(Clone, Debug)]
@@ -52,6 +52,7 @@ impl server::Server for SshServer {
             lifecycle: self.lifecycle.clone(),
             proxy: self.proxy.clone(),
             vm_lease: None,
+            channel_ptys: HashMap::new(),
         }
     }
 
@@ -65,6 +66,7 @@ struct SshSession {
     lifecycle: VmLifecycle,
     proxy: Arc<dyn ExecProxy>,
     vm_lease: Option<VmLease>,
+    channel_ptys: HashMap<ChannelId, PtyRequest>,
 }
 
 impl server::Handler for SshSession {
@@ -108,7 +110,8 @@ impl server::Handler for SshSession {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        let output = match self.proxy.exec(data.to_vec()).await {
+        let pty = self.channel_ptys.remove(&channel);
+        let output = match self.proxy.exec(data.to_vec(), pty).await {
             Ok(output) => output,
             Err(err) => {
                 session.channel_failure(channel)?;
@@ -127,6 +130,46 @@ impl server::Handler for SshSession {
         session.exit_status_request(channel, output.exit_status)?;
         session.eof(channel)?;
         session.close(channel)?;
+        Ok(())
+    }
+
+    async fn pty_request(
+        &mut self,
+        channel: ChannelId,
+        term: &str,
+        col_width: u32,
+        row_height: u32,
+        pix_width: u32,
+        pix_height: u32,
+        modes: &[(Pty, u32)],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        self.channel_ptys.insert(
+            channel,
+            PtyRequest::new(
+                term.to_string(),
+                TerminalSize::new(col_width, row_height, pix_width, pix_height),
+                modes.to_vec(),
+            ),
+        );
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    async fn window_change_request(
+        &mut self,
+        channel: ChannelId,
+        col_width: u32,
+        row_height: u32,
+        pix_width: u32,
+        pix_height: u32,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        if let Some(pty) = self.channel_ptys.get_mut(&channel) {
+            pty.resize(TerminalSize::new(
+                col_width, row_height, pix_width, pix_height,
+            ));
+        }
         Ok(())
     }
 }
@@ -352,7 +395,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn ssh_exec_replies_ok() {
+    async fn ssh_exec_proxies_pty_and_window_size() {
         let client_key =
             PrivateKey::random(&mut safe_rng(), Algorithm::Ed25519).expect("generate client key");
         let host_key =
@@ -404,6 +447,14 @@ mod tests {
             .await
             .expect("open session channel");
         channel
+            .request_pty(true, "xterm", 80, 24, 640, 480, &[(Pty::ECHO, 1)])
+            .await
+            .expect("pty request");
+        channel
+            .window_change(100, 30, 800, 600)
+            .await
+            .expect("window change request");
+        channel
             .exec(true, "echo through guest")
             .await
             .expect("exec request");
@@ -419,7 +470,10 @@ mod tests {
             }
         }
 
-        assert_eq!(stdout, b"proxied: echo through guest\n");
+        assert_eq!(
+            stdout,
+            b"pty xterm 100 30 800 600\nproxied: echo through guest\n"
+        );
         assert_eq!(exit_status, Some(3));
         assert_eq!(vm_spawner.boots.load(Ordering::SeqCst), 1);
 
@@ -450,11 +504,27 @@ mod tests {
     struct TestProxy;
 
     impl ExecProxy for TestProxy {
-        fn exec(&self, command: Vec<u8>) -> BoxFuture<Result<ExecOutput>> {
+        fn exec(&self, command: Vec<u8>, pty: Option<PtyRequest>) -> BoxFuture<Result<ExecOutput>> {
             Box::pin(async move {
+                let mut stdout = Vec::new();
+                if let Some(pty) = pty {
+                    stdout.extend_from_slice(
+                        format!(
+                            "pty {} {} {} {} {}\n",
+                            pty.term,
+                            pty.size.col_width,
+                            pty.size.row_height,
+                            pty.size.pix_width,
+                            pty.size.pix_height
+                        )
+                        .as_bytes(),
+                    );
+                }
+                stdout.extend_from_slice(
+                    format!("proxied: {}\n", String::from_utf8_lossy(&command)).as_bytes(),
+                );
                 Ok(ExecOutput {
-                    stdout: format!("proxied: {}\n", String::from_utf8_lossy(&command))
-                        .into_bytes(),
+                    stdout,
                     stderr: Vec::new(),
                     exit_status: 3,
                 })
