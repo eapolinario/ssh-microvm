@@ -19,7 +19,7 @@ microVM, waits for guest sshd, and bidirectionally proxies the SSH session
 - [x] **1. Cleanup + scaffolding** — delete Go tree, write `Cargo.toml`,
       flake.nix (Rust toolchain from nixpkgs unstable), Justfile, README,
       LICENSE (Apache-2.0), `src/main.rs` + `src/config.rs` stubs.
-- [ ] **2. Config + CLI** — full `Config` struct via clap derive; `--help`
+- [x] **2. Config + CLI** — full `Config` struct via clap derive; `--help`
       output documents every flag; `cargo run -- --help` works.
 - [ ] **3. Firecracker UDS HTTP client** (`src/api.rs`) — hand-rolled PUT/GET
       over `tokio::net::UnixStream`. Plus `--dry-boot` / `microvm boot`

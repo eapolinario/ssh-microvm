@@ -19,6 +19,7 @@ async fn main() -> Result<()> {
         .init();
 
     let cfg = config::Config::parse();
+    tracing::debug!(host_key = ?cfg.host_key_path(), "resolved host key path");
     tracing::info!(?cfg, "ssh-microvm starting (stub)");
     println!("ssh-microvm: skeleton build; nothing wired yet.");
     Ok(())

@@ -62,8 +62,7 @@ cleaned up.
 
 ## Configuration
 
-Configured via flags (defaults filled in by `src/config.rs` once step 2 lands).
-The intended v1 surface:
+Configured via flags:
 
 | Flag | Default | Notes |
 | --- | --- | --- |
