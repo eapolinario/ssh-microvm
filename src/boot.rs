@@ -2,55 +2,44 @@
 
 use std::{
     net::{IpAddr, SocketAddr},
-    path::{Path, PathBuf},
-    process::Stdio,
+    path::PathBuf,
     time::Duration,
 };
 
 use anyhow::{Context, Result, bail};
 use tokio::{
-    net::{TcpStream, UnixStream},
-    process::{Child, Command},
+    net::TcpStream,
     time::{Instant, sleep, timeout},
 };
 
 use crate::{
     api::{ApiClient, BootSource, Drive, MachineConfiguration, NetworkInterface},
     config::Config,
+    firecracker::VmHandle,
 };
 
 const GUEST_SSH_PORT: u16 = 22;
 const SSH_CONNECT_ATTEMPT_TIMEOUT: Duration = Duration::from_millis(200);
 const SSH_POLL_INTERVAL: Duration = Duration::from_millis(100);
-const FIRECRACKER_API_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 pub async fn dry_boot(cfg: &Config) -> Result<()> {
-    tokio::fs::create_dir_all(&cfg.state_dir)
-        .await
-        .with_context(|| format!("create state directory {}", cfg.state_dir.display()))?;
-
-    let socket_path = api_socket_path(cfg);
-    remove_stale_socket(&socket_path).await?;
-
-    let mut firecracker = spawn_firecracker(cfg, &socket_path)?;
-    tracing::info!(
-        firecracker = %cfg.firecracker.display(),
-        api_socket = %socket_path.display(),
-        "spawned Firecracker"
-    );
-
-    let client = ApiClient::new(&socket_path);
+    let mut vm = VmHandle::spawn(cfg).await?;
+    let mut interrupted = false;
     let boot_result = tokio::select! {
-        result = boot_until_guest_sshd(&client, cfg, &socket_path) => result,
+        result = vm.wait_until_ready(cfg) => result,
         signal = tokio::signal::ctrl_c() => {
             signal.context("listen for Ctrl-C")?;
             tracing::info!("received Ctrl-C during dry boot");
+            interrupted = true;
             Ok(())
         }
     };
 
-    let cleanup_result = terminate_firecracker(&mut firecracker).await;
-    remove_stale_socket(&socket_path).await?;
+    let cleanup_result = if interrupted || boot_result.is_err() {
+        vm.kill_and_cleanup().await
+    } else {
+        vm.shutdown().await
+    };
 
     boot_result?;
     cleanup_result?;
@@ -94,77 +83,8 @@ pub async fn wait_for_guest_sshd(guest_ip: IpAddr, boot_timeout: Duration) -> Re
     wait_for_tcp(SocketAddr::new(guest_ip, GUEST_SSH_PORT), boot_timeout).await
 }
 
-pub fn api_socket_path(cfg: &Config) -> PathBuf {
+pub(crate) fn api_socket_path(cfg: &Config) -> PathBuf {
     cfg.state_dir.join("firecracker.sock")
-}
-
-fn spawn_firecracker(cfg: &Config, socket_path: &Path) -> Result<Child> {
-    Command::new(&cfg.firecracker)
-        .arg("--api-sock")
-        .arg(socket_path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .spawn()
-        .with_context(|| format!("spawn Firecracker {}", cfg.firecracker.display()))
-}
-
-async fn boot_until_guest_sshd(client: &ApiClient, cfg: &Config, socket_path: &Path) -> Result<()> {
-    wait_for_api_socket(socket_path, cfg.boot_timeout).await?;
-    configure_and_start(client, cfg).await?;
-    wait_for_guest_sshd(cfg.guest_ip, cfg.boot_timeout).await?;
-    tracing::info!(guest_ip = %cfg.guest_ip, "guest sshd is reachable");
-    Ok(())
-}
-
-async fn wait_for_api_socket(socket_path: &Path, boot_timeout: Duration) -> Result<()> {
-    let deadline = Instant::now() + boot_timeout;
-
-    loop {
-        let last_error = match timeout(
-            SSH_CONNECT_ATTEMPT_TIMEOUT,
-            UnixStream::connect(socket_path),
-        )
-        .await
-        {
-            Ok(Ok(_stream)) => return Ok(()),
-            Ok(Err(err)) => err.to_string(),
-            Err(_elapsed) => "connection attempt timed out".to_string(),
-        };
-
-        let now = Instant::now();
-        if now >= deadline {
-            bail!(
-                "Firecracker API socket {} did not become reachable within {:?}: {last_error}",
-                socket_path.display(),
-                boot_timeout
-            );
-        }
-
-        sleep(std::cmp::min(FIRECRACKER_API_POLL_INTERVAL, deadline - now)).await;
-    }
-}
-
-async fn terminate_firecracker(child: &mut Child) -> Result<()> {
-    if child
-        .try_wait()
-        .context("check Firecracker process status")?
-        .is_some()
-    {
-        return Ok(());
-    }
-
-    child.kill().await.context("kill Firecracker process")?;
-    Ok(())
-}
-
-async fn remove_stale_socket(socket_path: &Path) -> Result<()> {
-    match tokio::fs::remove_file(socket_path).await {
-        Ok(()) => Ok(()),
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(err) => Err(err)
-            .with_context(|| format!("remove Firecracker API socket {}", socket_path.display())),
-    }
 }
 
 async fn wait_for_tcp(addr: SocketAddr, boot_timeout: Duration) -> Result<()> {
@@ -261,31 +181,6 @@ mod tests {
             .await
             .expect("reachable port should succeed");
         server.await.expect("server task should finish");
-    }
-
-    #[tokio::test]
-    async fn wait_for_api_socket_returns_when_socket_accepts_connections() {
-        let socket_path = unique_socket_path();
-        let _ = fs::remove_file(&socket_path);
-        let listener = UnixListener::bind(&socket_path).expect("bind unix listener");
-        let server = tokio::spawn(async move {
-            let _ = listener.accept().await.expect("accept connection");
-        });
-
-        wait_for_api_socket(&socket_path, Duration::from_secs(1))
-            .await
-            .expect("reachable API socket should succeed");
-        server.await.expect("server task should finish");
-    }
-
-    #[test]
-    fn api_socket_path_lives_under_state_dir() {
-        let cfg = test_config();
-
-        assert_eq!(
-            api_socket_path(&cfg),
-            PathBuf::from("/tmp/ssh-microvm/firecracker.sock")
-        );
     }
 
     fn test_config() -> Config {

@@ -25,7 +25,7 @@ microVM, waits for guest sshd, and bidirectionally proxies the SSH session
       over `tokio::net::UnixStream`. Plus `--dry-boot` / `microvm boot`
       subcommand that spawns Firecracker, configures it, starts the VM,
       waits for guest sshd:22, and exits cleanly on Ctrl-C.
-- [ ] **4. VmHandle** (`src/firecracker.rs`) — `boot()` + `shutdown()` with
+- [x] **4. VmHandle** (`src/firecracker.rs`) — `boot()` + `shutdown()` with
       SendCtrlAltDel → grace → SIGKILL → state-dir cleanup.
 - [ ] **5. Outer SSH server** (`src/ssh_server.rs`) — russh server, host-key
       load (auto-generate if missing), public-key auth against
