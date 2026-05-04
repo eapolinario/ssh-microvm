@@ -13,22 +13,28 @@
         pkgs = nixpkgs.legacyPackages.${system};
       in {
         devShells.default = pkgs.mkShell {
+          # Rust toolchain comes from nixpkgs (no rust-overlay / fenix pin yet).
+          # If we ever need a pinned toolchain, swap to rust-overlay here.
           packages = [
-            pkgs.go_1_25
-            pkgs.gopls
-            pkgs.gotools
+            pkgs.rustc
+            pkgs.cargo
+            pkgs.rustfmt
+            pkgs.clippy
+            pkgs.rust-analyzer
+
             pkgs.just
             pkgs.pre-commit
             pkgs.direnv
             pkgs.nix-direnv
+
+            # Used by `just fetch-ubuntu` to unpack the Firecracker CI rootfs.
             pkgs.squashfsTools
             pkgs.squashfuse
           ];
 
-          # Ensure nix-direnv's use_flake hook is available
           shellHook = ''
             source ${pkgs.nix-direnv}/share/nix-direnv/direnvrc
-            pre-commit install
+            pre-commit install >/dev/null 2>&1 || true
           '';
         };
       }

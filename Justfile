@@ -1,23 +1,47 @@
-# Justfile for ssh-microvm
+# Justfile for ssh-microvm (Rust)
 
 set shell := ["bash", "-lc"]
 
 KERNEL := "artifacts/vmlinux.bin"
 ROOTFS := "artifacts/ubuntu.ext4"
+GUEST_KEY := "artifacts/ubuntu.id_rsa"
 TAP_NAME := "tap0"
 HOST_IP := "172.16.0.1"
 
 default:
     @just --list
 
+# --- Rust ---
+
 build:
-    CGO_ENABLED=0 go build ./cmd/ssh-microvm
+    cargo build --release
 
 run:
-    CGO_ENABLED=0 go run ./cmd/ssh-microvm --kernel {{KERNEL}} --rootfs {{ROOTFS}}
+    cargo run -- \
+        --kernel {{KERNEL}} \
+        --rootfs {{ROOTFS}} \
+        --guest-key {{GUEST_KEY}} \
+        --accept-any-key
 
-run-args KERNEL ROOTFS:
-    CGO_ENABLED=0 go run ./cmd/ssh-microvm --kernel {{KERNEL}} --rootfs {{ROOTFS}}
+check:
+    cargo check --all-targets
+
+fmt:
+    cargo fmt --all
+
+fmt-check:
+    cargo fmt --all -- --check
+
+lint:
+    cargo clippy --all-targets -- -D warnings
+
+test:
+    cargo test --all
+
+setup:
+    pre-commit install
+
+# --- Artifacts (unchanged from the Go version) ---
 
 fetch-ubuntu:
     #!/usr/bin/env bash
@@ -60,48 +84,7 @@ fetch-ubuntu:
     sudo rm -rf "$squash_dir"
     ln -sf "ubuntu-${ubuntu_version}.ext4" artifacts/ubuntu.ext4
 
-setup:
-    pre-commit install
-
-fmt:
-    gofmt -w cmd internal
-
-lint:
-    go vet ./...
-
-tidy:
-    go mod tidy
-
-test:
-    CGO_ENABLED=0 go test ./...
-
-integration:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    root="{{justfile_directory()}}"
-    kernel="${root}/{{KERNEL}}"
-    rootfs="${root}/{{ROOTFS}}"
-    guest_key="${root}/artifacts/ubuntu.id_rsa"
-    if [[ ! -f "$kernel" || ! -f "$rootfs" || ! -f "$guest_key" ]]; then
-        echo "missing artifacts; run: just fetch-ubuntu" >&2
-        exit 1
-    fi
-    CGO_ENABLED=0 \
-        SSH_MICROVM_KERNEL="$kernel" \
-        SSH_MICROVM_ROOTFS="$rootfs" \
-        SSH_MICROVM_GUEST_KEY="$guest_key" \
-        go test ./internal/integration -v
-
-integration-sudoers:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    user="${SUDO_USER:-${USER:-$LOGNAME}}"
-    cat <<'EOF'
-    Add the following to your sudoers (via `sudo visudo`), updating USER if needed:
-    EOF
-    cat <<EOF
-    ${user} ALL=(root) NOPASSWD: /usr/sbin/ip, /sbin/ip, /usr/bin/ip
-    EOF
+# --- Networking (host tap) ---
 
 tap-up:
     #!/usr/bin/env bash
@@ -128,5 +111,20 @@ tap-down:
         echo "tap missing: $tap"
     fi
 
+integration-sudoers:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    user="${SUDO_USER:-${USER:-$LOGNAME}}"
+    cat <<'EOF'
+    Add the following to your sudoers (via `sudo visudo`), updating USER if needed:
+    EOF
+    cat <<EOF
+    ${user} ALL=(root) NOPASSWD: /usr/sbin/ip, /sbin/ip, /usr/bin/ip
+    EOF
+
+# --- Connect ---
+
 ssh-local:
-    ssh -t -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes -i artifacts/ubuntu.id_rsa localhost -p 2222
+    ssh -t -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+        -o IdentitiesOnly=yes -i artifacts/ubuntu.id_rsa \
+        localhost -p 2222
