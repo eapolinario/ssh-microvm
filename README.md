@@ -1,13 +1,13 @@
 # ssh-microvm
 
 An SSH server that boots a fresh [Firecracker](https://firecracker-microvm.github.io/)
-microVM per incoming connection and proxies the session into the guest. Each
-SSH client gets an isolated, ephemeral VM that is torn down when the connection
-closes.
+microVM for each accepted connection and proxies shell, exec, PTY, and
+window-change traffic into the guest. v1 intentionally allows one VM at a time:
+additional SSH clients wait until the active VM is torn down.
 
-> Status: **rewriting in Rust.** The Go prototype has been removed. v1 scope
-> is intentionally small — single concurrent VM, cold boot only, no persistent
-> state. See [`plan.md`](./plan.md).
+> Status: **Rust v1 implementation.** Scope is intentionally small — single
+> concurrent VM, cold boot only, externally managed tap networking, and no
+> persistent state. See [`plan.md`](./plan.md).
 
 ## Architecture (v1)
 
@@ -24,9 +24,11 @@ Code layout (all under `src/`):
 - `main.rs` — entrypoint; parses CLI, sets up logging, runs the server
 - `config.rs` — clap-derived `Config`
 - `api.rs` — hand-rolled HTTP-over-UnixStream client for the Firecracker API
+- `boot.rs` — Firecracker configuration sequence and guest sshd readiness wait
 - `firecracker.rs` — `VmHandle::boot` / `shutdown`, process supervision
-- `ssh_server.rs` — russh server, auth, channel lifecycle
-- `proxy.rs` — bidirectional pump between outer and inner SSH channels
+- `lifecycle.rs` — single-VM mutex lease used by SSH sessions
+- `ssh_server.rs` — russh server, auth, channel lifecycle, VM lease ownership
+- `proxy.rs` — inner russh client for guest exec/shell proxying
 
 ## Requirements
 
@@ -58,7 +60,7 @@ just ssh-local
 ```
 
 When you disconnect, the microVM is terminated and its state directory is
-cleaned up.
+cleaned up. The next client connection cold-boots a new guest.
 
 ## Configuration
 
@@ -67,10 +69,11 @@ Configured via flags:
 | Flag | Default | Notes |
 | --- | --- | --- |
 | `--dry-boot` | `false` | Boot one VM, wait for guest sshd, then tear it down |
+| `microvm boot` | n/a | Subcommand equivalent of `--dry-boot` |
 | `--listen` | `0.0.0.0:2222` | SSH listen address |
 | `--kernel` | _(required)_ | Path to `vmlinux.bin` |
 | `--rootfs` | _(required)_ | Path to ext4 rootfs |
-| `--state-dir` | tempdir | Sockets, logs, host key |
+| `--state-dir` | `/tmp/ssh-microvm` | Sockets, logs, host key, per-VM state |
 | `--host-key` | `<state-dir>/ssh_host_ed25519` | Auto-generated if missing |
 | `--authorized-keys` | _(none)_ | OpenSSH `authorized_keys` file |
 | `--accept-any-key` | `false` | Dev only; bypasses auth |
@@ -97,6 +100,7 @@ just test               # cargo test
 just fetch-ubuntu       # download + assemble Ubuntu rootfs
 just tap-up / tap-down  # manage tap0 / 172.16.0.1
 ssh-microvm --dry-boot ... # boot one VM and verify guest sshd readiness
+ssh-microvm ... microvm boot # subcommand form of --dry-boot
 just ssh-local          # ssh into the running server
 ```
 
@@ -104,6 +108,12 @@ just ssh-local          # ssh into the running server
 
 - Pre-commit hooks (`cargo fmt --check`, `cargo check`) installed by the dev shell.
 - Rust toolchain comes from `nixpkgs` unstable (no overlay pin yet).
+- Full local validation: `cargo fmt --all -- --check`, `cargo test --all`, and
+  `cargo clippy --all-targets -- -D warnings`.
+- The smoke integration test is gated by `SSH_MICROVM_KERNEL`,
+  `SSH_MICROVM_ROOTFS`, and `SSH_MICROVM_GUEST_KEY`. When all three are set,
+  `cargo test --test smoke` boots the binary, runs `echo hello` through SSH, and
+  asserts the proxied command succeeds.
 
 ## License
 
