@@ -18,7 +18,10 @@ use tokio::net::TcpListener;
 use crate::{
     config::Config,
     lifecycle::{VmLease, VmLifecycle},
-    proxy::{ExecProxy, GuestSshProxy, PtyRequest, TerminalSize},
+    proxy::{
+        ExecProxy, GuestSshProxy, OpenedShell, PtyRequest, ShellEvent, ShellProxy, ShellSession,
+        TerminalSize,
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -39,7 +42,8 @@ impl ClientAuth {
 struct SshServer {
     auth: ClientAuth,
     lifecycle: VmLifecycle,
-    proxy: Arc<dyn ExecProxy>,
+    exec_proxy: Arc<dyn ExecProxy>,
+    shell_proxy: Arc<dyn ShellProxy>,
 }
 
 impl server::Server for SshServer {
@@ -50,9 +54,11 @@ impl server::Server for SshServer {
         SshSession {
             auth: self.auth.clone(),
             lifecycle: self.lifecycle.clone(),
-            proxy: self.proxy.clone(),
+            exec_proxy: self.exec_proxy.clone(),
+            shell_proxy: self.shell_proxy.clone(),
             vm_lease: None,
             channel_ptys: HashMap::new(),
+            shell_sessions: HashMap::new(),
         }
     }
 
@@ -64,9 +70,11 @@ impl server::Server for SshServer {
 struct SshSession {
     auth: ClientAuth,
     lifecycle: VmLifecycle,
-    proxy: Arc<dyn ExecProxy>,
+    exec_proxy: Arc<dyn ExecProxy>,
+    shell_proxy: Arc<dyn ShellProxy>,
     vm_lease: Option<VmLease>,
     channel_ptys: HashMap<ChannelId, PtyRequest>,
+    shell_sessions: HashMap<ChannelId, Box<dyn ShellSession>>,
 }
 
 impl server::Handler for SshSession {
@@ -111,7 +119,7 @@ impl server::Handler for SshSession {
         session: &mut Session,
     ) -> Result<(), Self::Error> {
         let pty = self.channel_ptys.remove(&channel);
-        let output = match self.proxy.exec(data.to_vec(), pty).await {
+        let output = match self.exec_proxy.exec(data.to_vec(), pty).await {
             Ok(output) => output,
             Err(err) => {
                 session.channel_failure(channel)?;
@@ -165,13 +173,110 @@ impl server::Handler for SshSession {
         pix_height: u32,
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
-        if let Some(pty) = self.channel_ptys.get_mut(&channel) {
+        let size = TerminalSize::new(col_width, row_height, pix_width, pix_height);
+        if let Some(shell) = self.shell_sessions.get_mut(&channel) {
+            shell
+                .resize(size)
+                .await
+                .context("forward window-change to guest shell")?;
+        } else if let Some(pty) = self.channel_ptys.get_mut(&channel) {
             pty.resize(TerminalSize::new(
                 col_width, row_height, pix_width, pix_height,
             ));
         }
         Ok(())
     }
+
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        let pty = self.channel_ptys.remove(&channel);
+        let OpenedShell {
+            session: shell_session,
+            events,
+        } = match self.shell_proxy.open_shell(pty).await {
+            Ok(opened) => opened,
+            Err(err) => {
+                session.channel_failure(channel)?;
+                session.close(channel)?;
+                return Err(err.context("open guest SSH shell"));
+            }
+        };
+
+        forward_shell_events(session.handle(), channel, events);
+        self.shell_sessions.insert(channel, shell_session);
+        session.channel_success(channel)?;
+        Ok(())
+    }
+
+    async fn data(
+        &mut self,
+        channel: ChannelId,
+        data: &[u8],
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        if let Some(shell) = self.shell_sessions.get_mut(&channel) {
+            shell
+                .data(data.to_vec())
+                .await
+                .context("forward client data to guest shell")?;
+        }
+        Ok(())
+    }
+
+    async fn channel_eof(
+        &mut self,
+        channel: ChannelId,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        if let Some(shell) = self.shell_sessions.get_mut(&channel) {
+            shell.eof().await.context("forward EOF to guest shell")?;
+        }
+        Ok(())
+    }
+
+    async fn channel_close(
+        &mut self,
+        channel: ChannelId,
+        _session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        if let Some(mut shell) = self.shell_sessions.remove(&channel) {
+            shell.close().await.context("close guest shell")?;
+        }
+        self.channel_ptys.remove(&channel);
+        Ok(())
+    }
+}
+
+fn forward_shell_events(
+    handle: server::Handle,
+    channel: ChannelId,
+    mut events: tokio::sync::mpsc::Receiver<ShellEvent>,
+) {
+    tokio::spawn(async move {
+        while let Some(event) = events.recv().await {
+            match event {
+                ShellEvent::Stdout(data) => {
+                    let _ = handle.data(channel, data).await;
+                }
+                ShellEvent::Stderr(data) => {
+                    let _ = handle.extended_data(channel, 1, data).await;
+                }
+                ShellEvent::ExitStatus(status) => {
+                    let _ = handle.exit_status_request(channel, status).await;
+                }
+                ShellEvent::Eof => {
+                    let _ = handle.eof(channel).await;
+                }
+                ShellEvent::Close => {
+                    let _ = handle.close(channel).await;
+                    break;
+                }
+            }
+        }
+    });
 }
 
 fn auth_result(accepted: bool) -> Auth {
@@ -194,7 +299,8 @@ pub async fn run(cfg: &Config) -> Result<()> {
     let mut server = SshServer {
         auth,
         lifecycle,
-        proxy,
+        exec_proxy: proxy.clone(),
+        shell_proxy: proxy,
     };
 
     tracing::info!(listen = %cfg.listen, "ssh server listening");
@@ -280,6 +386,7 @@ fn write_private_key(path: &Path, key: &PrivateKey) -> Result<()> {
 mod tests {
     use std::{
         fs,
+        io::Cursor,
         net::{IpAddr, Ipv4Addr, SocketAddr},
         path::PathBuf,
         sync::{
@@ -294,7 +401,10 @@ mod tests {
         client::{self, Handler},
         keys::PrivateKeyWithHashAlg,
     };
-    use tokio::{sync::Notify, time::timeout};
+    use tokio::{
+        sync::{Mutex, Notify, mpsc},
+        time::timeout,
+    };
 
     use crate::{
         lifecycle::{BoxFuture, RunningVm, VmLifecycle, VmSpawner},
@@ -411,7 +521,8 @@ mod tests {
         let mut server = SshServer {
             auth: ClientAuth::AcceptAnyKey,
             lifecycle,
-            proxy: Arc::new(TestProxy),
+            exec_proxy: Arc::new(TestProxy),
+            shell_proxy: Arc::new(TestProxy),
         };
 
         let server_task = tokio::spawn(async move {
@@ -491,6 +602,103 @@ mod tests {
         assert_eq!(vm_spawner.shutdowns.load(Ordering::SeqCst), 1);
     }
 
+    #[tokio::test]
+    async fn ssh_shell_proxies_data_eof_and_window_size() {
+        let client_key =
+            PrivateKey::random(&mut safe_rng(), Algorithm::Ed25519).expect("generate client key");
+        let host_key =
+            PrivateKey::random(&mut safe_rng(), Algorithm::Ed25519).expect("generate host key");
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("listener addr");
+        let server_config = Arc::new(server_config(host_key));
+        let cfg = test_config();
+        let vm_spawner = Arc::new(TestVmSpawner::default());
+        let lifecycle = VmLifecycle::new_with_spawner(&cfg, vm_spawner.clone());
+        let mut server = SshServer {
+            auth: ClientAuth::AcceptAnyKey,
+            lifecycle,
+            exec_proxy: Arc::new(TestProxy),
+            shell_proxy: Arc::new(TestProxy),
+        };
+
+        let server_task = tokio::spawn(async move {
+            let (socket, peer_addr) = listener.accept().await.expect("accept client");
+            let handler = server.new_client(Some(peer_addr));
+            server::run_stream(server_config, socket, handler)
+                .await
+                .expect("run ssh session");
+        });
+
+        let mut session = client::connect(Arc::new(client::Config::default()), addr, TestClient)
+            .await
+            .expect("connect client");
+        let authenticated = session
+            .authenticate_publickey(
+                "test",
+                PrivateKeyWithHashAlg::new(
+                    Arc::new(client_key),
+                    session
+                        .best_supported_rsa_hash()
+                        .await
+                        .expect("query rsa hash")
+                        .flatten(),
+                ),
+            )
+            .await
+            .expect("authenticate")
+            .success();
+        assert!(authenticated);
+
+        let mut channel = session
+            .channel_open_session()
+            .await
+            .expect("open session channel");
+        channel
+            .request_pty(true, "xterm", 80, 24, 640, 480, &[(Pty::ECHO, 1)])
+            .await
+            .expect("pty request");
+        channel.request_shell(true).await.expect("shell request");
+        channel
+            .window_change(120, 40, 960, 640)
+            .await
+            .expect("window change request");
+        channel
+            .data(Cursor::new(b"hello shell\n".to_vec()))
+            .await
+            .expect("send shell data");
+        channel.eof().await.expect("send eof");
+
+        let mut stdout = Vec::new();
+        let mut exit_status = None;
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                ChannelMsg::Data { data } => stdout.extend_from_slice(&data),
+                ChannelMsg::ExitStatus { exit_status: code } => exit_status = Some(code),
+                ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+
+        assert_eq!(stdout, b"shell xterm 120 40 960 640\ninput: hello shell\n");
+        assert_eq!(exit_status, Some(0));
+        assert_eq!(vm_spawner.boots.load(Ordering::SeqCst), 1);
+
+        session
+            .disconnect(Disconnect::ByApplication, "", "en")
+            .await
+            .expect("disconnect");
+        server_task.await.expect("server task");
+        timeout(
+            Duration::from_secs(1),
+            vm_spawner.shutdown_notify.notified(),
+        )
+        .await
+        .expect("disconnect should shut down the VM lease");
+        assert_eq!(vm_spawner.shutdowns.load(Ordering::SeqCst), 1);
+    }
+
     struct TestClient;
 
     impl Handler for TestClient {
@@ -529,6 +737,82 @@ mod tests {
                     exit_status: 3,
                 })
             })
+        }
+    }
+
+    impl ShellProxy for TestProxy {
+        fn open_shell(&self, pty: Option<PtyRequest>) -> BoxFuture<Result<OpenedShell>> {
+            Box::pin(async move {
+                let (events_tx, events_rx) = mpsc::channel(8);
+                let size = Arc::new(Mutex::new(pty.map(|pty| (pty.term, pty.size))));
+                Ok(OpenedShell {
+                    session: Box::new(TestShellSession { events_tx, size }),
+                    events: events_rx,
+                })
+            })
+        }
+    }
+
+    struct TestShellSession {
+        events_tx: mpsc::Sender<ShellEvent>,
+        size: Arc<Mutex<Option<(String, TerminalSize)>>>,
+    }
+
+    impl ShellSession for TestShellSession {
+        fn data(&mut self, data: Vec<u8>) -> BoxFuture<Result<()>> {
+            let events_tx = self.events_tx.clone();
+            let size = self.size.clone();
+            Box::pin(async move {
+                let mut stdout = Vec::new();
+                if let Some((term, size)) = &*size.lock().await {
+                    stdout.extend_from_slice(
+                        format!(
+                            "shell {} {} {} {} {}\n",
+                            term, size.col_width, size.row_height, size.pix_width, size.pix_height
+                        )
+                        .as_bytes(),
+                    );
+                }
+                stdout.extend_from_slice(
+                    format!("input: {}", String::from_utf8_lossy(&data)).as_bytes(),
+                );
+                events_tx
+                    .send(ShellEvent::Stdout(stdout))
+                    .await
+                    .context("send test shell stdout")
+            })
+        }
+
+        fn resize(&mut self, size: TerminalSize) -> BoxFuture<Result<()>> {
+            let current = self.size.clone();
+            Box::pin(async move {
+                if let Some((_, current_size)) = current.lock().await.as_mut() {
+                    *current_size = size;
+                }
+                Ok(())
+            })
+        }
+
+        fn eof(&mut self) -> BoxFuture<Result<()>> {
+            let events_tx = self.events_tx.clone();
+            Box::pin(async move {
+                events_tx
+                    .send(ShellEvent::ExitStatus(0))
+                    .await
+                    .context("send test shell exit status")?;
+                events_tx
+                    .send(ShellEvent::Eof)
+                    .await
+                    .context("send test shell eof")?;
+                events_tx
+                    .send(ShellEvent::Close)
+                    .await
+                    .context("send test shell close")
+            })
+        }
+
+        fn close(&mut self) -> BoxFuture<Result<()>> {
+            Box::pin(async { Ok(()) })
         }
     }
 
