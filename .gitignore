@@ -1,0 +1,16 @@
+/target
+Cargo.lock.bak
+
+# Artifacts pulled by `just fetch-ubuntu`. The directory itself is tracked
+# (so the README's instructions resolve), but its contents are not.
+/artifacts/*
+!/artifacts/.gitkeep
+
+# Local dev state (direnv, agent harnesses)
+/.direnv/
+/.agent-shell/
+/.gnhf/
+
+# Editor / OS junk
+.DS_Store
+*.swp
