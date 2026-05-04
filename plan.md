@@ -36,7 +36,7 @@ microVM, waits for guest sshd, and bidirectionally proxies the SSH session
 - [x] **7. Inner SSH client + proxy** (`src/proxy.rs`) — russh client dials
       `guest_ip:22` with `--guest-key`; proxy `exec` end-to-end.
 - [x] **8. PTY / shell / window-change** — full interactive proxy.
-- [ ] **9. Smoke integration test** — gated by `SSH_MICROVM_KERNEL`,
+- [x] **9. Smoke integration test** — gated by `SSH_MICROVM_KERNEL`,
       `SSH_MICROVM_ROOTFS`, `SSH_MICROVM_GUEST_KEY`. Boots the binary, runs
       `echo hello`, asserts exit 0 and stdout.
 - [ ] **10. README + plan polish.**
