@@ -1,13 +1,16 @@
 //! ssh-microvm entrypoint.
 //!
-//! For now this is a stub: it parses CLI flags and prints the resolved config.
-//! Subsequent steps wire in the Firecracker API client, the russh server,
-//! and the session proxy.
+//! The dry-boot path exercises the Firecracker boot sequence used by later
+//! lifecycle code; the server path accepts SSH connections and validates the
+//! outer SSH stack.
 
 use anyhow::Result;
 use clap::Parser;
-
-mod config;
+use ssh_microvm::{
+    boot,
+    config::{Config, RunMode},
+    ssh_server,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -18,8 +21,14 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let cfg = config::Config::parse();
-    tracing::info!(?cfg, "ssh-microvm starting (stub)");
-    println!("ssh-microvm: skeleton build; nothing wired yet.");
+    let cfg = Config::parse();
+    tracing::debug!(host_key = ?cfg.host_key_path(), "resolved host key path");
+    tracing::info!(?cfg, "ssh-microvm starting");
+
+    match cfg.run_mode() {
+        RunMode::BootOnce => boot::dry_boot(&cfg).await?,
+        RunMode::Server => ssh_server::run(&cfg).await?,
+    }
+
     Ok(())
 }
