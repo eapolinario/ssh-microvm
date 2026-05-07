@@ -108,8 +108,7 @@ just ssh-local          # ssh into the running server
 
 - Pre-commit hooks (`cargo fmt --check`, `cargo check`) installed by the dev shell.
 - Rust toolchain comes from `nixpkgs` unstable (no overlay pin yet).
-- Full local validation: `cargo fmt --all -- --check`, `cargo test --all`, and
-  `cargo clippy --all-targets -- -D warnings`.
+- Full local validation: `just fmt-check && just test && just lint`.
 - The smoke integration test is gated by `SSH_MICROVM_KERNEL`,
   `SSH_MICROVM_ROOTFS`, and `SSH_MICROVM_GUEST_KEY`. When all three are set,
   `cargo test --test smoke` boots the binary, runs `echo hello` through SSH, and
